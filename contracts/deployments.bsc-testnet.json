@@ -1,0 +1,13 @@
+{
+  "chain": "bscTestnet",
+  "version": "V3",
+  "rpcUrl": "https://bsc-testnet-rpc.publicnode.com",
+  "deployer": "0x5A3a9252f4C841214210e525f3B1d01974E96682",
+  "adminWallet": "0x5A3a9252f4C841214210e525f3B1d01974E96682",
+  "factoryAddress": "0x6bef7D26ED63E92aF2e5389203E516f3E1dF4e6f",
+  "lpVaultAddress": "0x6570E24c6F35bE18bE766a46bB21Ea825bC59191",
+  "commissionVaultAddress": "0x9052927E66cE9533f2a183f9e1FbDbAb38d7536e",
+  "rocketTokenAddress": "0xEa35a65D408e8F3d061BB8097D7c23393f61aDA9",
+  "rocketProjectId": "1",
+  "deployedAt": "2026-06-04T06:28:00.331Z"
+}

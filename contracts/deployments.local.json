@@ -1,0 +1,9 @@
+{
+  "chain": "hardhatLocal",
+  "rpcUrl": "http://127.0.0.1:8545",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "factoryAddress": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  "lpVaultAddress": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+  "rocketTokenAddress": "0xd8058efe0198ae9dD7D563e1b4938Dcbc86A1F81",
+  "deployedAt": "2026-06-01T08:23:49.173Z"
+}
