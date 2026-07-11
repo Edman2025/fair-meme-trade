@@ -19,6 +19,13 @@ export interface ChainTxResult {
   status: "submitted" | "failed";
 }
 
+export interface WalletTransactionReceipt {
+  transactionHash: string;
+  blockNumber: string;
+  status: string;
+  logs: Array<{ address: string; topics: string[]; data: string }>;
+}
+
 interface EthereumProvider {
   request: <T = unknown>(args: { method: string; params?: unknown[] }) => Promise<T>;
   on?: (event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void) => void;
@@ -176,4 +183,28 @@ export const sendValueTransaction = async (request: ChainTransactionRequest): Pr
     txHash,
     status: "submitted",
   };
+};
+
+export const waitForTransactionReceipt = async (
+  txHash: string,
+  timeoutMs = 180_000,
+  pollIntervalMs = 1_500,
+): Promise<WalletTransactionReceipt> => {
+  const provider = getProvider();
+  if (!provider) throw new Error("未检测到注入钱包");
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const receipt = await provider.request<WalletTransactionReceipt | null>({
+      method: "eth_getTransactionReceipt",
+      params: [txHash],
+    });
+    if (receipt) {
+      if (BigInt(receipt.status || "0x0") !== 1n) {
+        throw new Error(`链上交易执行失败：${txHash}`);
+      }
+      return receipt;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, pollIntervalMs));
+  }
+  throw new Error(`等待链上确认超时：${txHash}`);
 };

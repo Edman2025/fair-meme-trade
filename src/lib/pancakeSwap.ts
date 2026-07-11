@@ -1,6 +1,6 @@
 import { Interface, formatUnits, parseUnits } from "ethers";
 import { bscTestnetConfig } from "@/lib/chainConfig";
-import { ensureWalletChain } from "@/lib/walletAdapter";
+import { ensureWalletChain, waitForTransactionReceipt } from "@/lib/walletAdapter";
 
 const ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn,address[] calldata path) external view returns (uint256[] memory amounts)",
@@ -130,7 +130,8 @@ export const swapExactTokensForBnb = async (tokenAddress: string, tokenAmount: s
   const [allowance] = erc20Interface.decodeFunctionResult("allowance", allowanceRaw) as unknown as [bigint];
   if (allowance < amountIn) {
     const approveData = erc20Interface.encodeFunctionData("approve", [bscTestnetConfig.pancakeRouterAddress, amountIn]);
-    await sendTransaction({ from: account, to: tokenAddress, data: approveData });
+    const approveTxHash = await sendTransaction({ from: account, to: tokenAddress, data: approveData });
+    await waitForTransactionReceipt(approveTxHash);
   }
   const quote = await quoteTokenToBnb(tokenAddress, tokenAmount, slippagePercent);
   const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
@@ -172,6 +173,7 @@ export const addLiquidityEthAndLock = async (params: {
   releaseType?: "once" | "linear";
   releaseStart?: number;
   releaseEnd?: number;
+  onStep?: (step: "approveToken" | "addLiquidity" | "approveLp" | "lockLp", txHash?: string) => void;
 }) => {
   await ensureWalletChain(bscTestnetConfig);
   const account = await getAccount();
@@ -185,8 +187,11 @@ export const addLiquidityEthAndLock = async (params: {
   const tokenAllowanceRaw = await ethCall(params.tokenAddress, tokenAllowanceData);
   const [tokenAllowance] = erc20Interface.decodeFunctionResult("allowance", tokenAllowanceRaw) as unknown as [bigint];
   if (tokenAllowance < tokenAmount) {
+    params.onStep?.("approveToken");
     const approveData = erc20Interface.encodeFunctionData("approve", [bscTestnetConfig.pancakeRouterAddress, tokenAmount]);
-    await sendTransaction({ from: account, to: params.tokenAddress, data: approveData });
+    const tokenApproveTxHash = await sendTransaction({ from: account, to: params.tokenAddress, data: approveData });
+    params.onStep?.("approveToken", tokenApproveTxHash);
+    await waitForTransactionReceipt(tokenApproveTxHash);
   }
 
   const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
@@ -198,12 +203,15 @@ export const addLiquidityEthAndLock = async (params: {
     account,
     deadline,
   ]);
+  params.onStep?.("addLiquidity");
   const addLiquidityTxHash = await sendTransaction({
     from: account,
     to: bscTestnetConfig.pancakeRouterAddress!,
     value: toHexQuantity(bnbAmount),
     data: addData,
   });
+  params.onStep?.("addLiquidity", addLiquidityTxHash);
+  await waitForTransactionReceipt(addLiquidityTxHash);
 
   const pairAddress = await getPancakePair(params.tokenAddress);
   if (pairAddress === "0x0000000000000000000000000000000000000000") {
@@ -224,8 +232,11 @@ export const addLiquidityEthAndLock = async (params: {
   const lpAllowanceRaw = await ethCall(pairAddress, lpAllowanceData);
   const [lpAllowance] = erc20Interface.decodeFunctionResult("allowance", lpAllowanceRaw) as unknown as [bigint];
   if (lpAllowance < lpBalance) {
+    params.onStep?.("approveLp");
     const approveLpData = erc20Interface.encodeFunctionData("approve", [bscTestnetConfig.lpVaultAddress, lpBalance]);
-    await sendTransaction({ from: account, to: pairAddress, data: approveLpData });
+    const lpApproveTxHash = await sendTransaction({ from: account, to: pairAddress, data: approveLpData });
+    params.onStep?.("approveLp", lpApproveTxHash);
+    await waitForTransactionReceipt(lpApproveTxHash);
   }
 
   const lockData = vaultInterface.encodeFunctionData("lock", [
@@ -237,11 +248,14 @@ export const addLiquidityEthAndLock = async (params: {
     BigInt(params.releaseStart || params.unlockAt),
     BigInt(params.releaseEnd || params.releaseStart || params.unlockAt),
   ]);
+  params.onStep?.("lockLp");
   const lockTxHash = await sendTransaction({
     from: account,
     to: bscTestnetConfig.lpVaultAddress!,
     data: lockData,
   });
+  params.onStep?.("lockLp", lockTxHash);
+  await waitForTransactionReceipt(lockTxHash);
 
   return {
     addLiquidityTxHash,

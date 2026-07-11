@@ -36,6 +36,8 @@ import { useMvp } from "@/contexts/MvpContext";
 import { createTokenOnChain } from "@/lib/chainWrite";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
 import { apiRequest } from "@/lib/backendApi";
+import { addLiquidityEthAndLock } from "@/lib/pancakeSwap";
+import { formatUnits, parseUnits } from "ethers";
 
 const TOTAL_SUPPLY = 1_000_000_000;
 const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -159,8 +161,9 @@ const DateTimePicker = ({ value, onChange, placeholder }: { value?: Date; onChan
 const Create = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { createToken, isConnected, connectWallet, connectInjectedWallet } = useMvp();
+  const { createToken, isConnected, connectWallet, connectInjectedWallet, walletAddress } = useMvp();
   const [isCreating, setIsCreating] = useState(false);
+  const [creationStep, setCreationStep] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
   const [bnbUsdPrice, setBnbUsdPrice] = useState<number | null>(null);
@@ -180,7 +183,7 @@ const Create = () => {
       description: "",
       initialMarketCap: "",
       totalLpShares: "",
-      lpCurrency: "USDT",
+      lpCurrency: "BNB",
       teamLpShares: "",
       lpReleaseType: "oneTime",
       hasMarketing: false,
@@ -301,6 +304,8 @@ const Create = () => {
   };
 
   const onSubmit = async (values: FormValues) => {
+    let activeWalletAddress = walletAddress;
+    let confirmedTokenAddress = "";
     if (values.openingBuyAmount) {
       const openingBuyAmount = Number(values.openingBuyAmount);
       const openingBuyCurrency = values.openingBuyCurrency || "USDT";
@@ -315,10 +320,21 @@ const Create = () => {
         return;
       }
     }
+    const totalShares = parseUnits(values.totalLpShares, 18);
+    const creatorShares = parseUnits(values.teamLpShares, 18);
+    if (creatorShares > totalShares) {
+      form.setError("teamLpShares", { message: "项目方 LP 份额不能超过 LP 总份额" });
+      return;
+    }
+    if (values.lpCurrency !== "BNB") {
+      form.setError("lpCurrency", { message: "当前真实自动加池流程仅支持 BNB" });
+      return;
+    }
     const liquidityUsdValue = values.lpCurrency === "USDT" ? teamLpValue : bnbUsdPrice ? teamLpValue * bnbUsdPrice : undefined;
     if (!isConnected) {
       try {
         const signature = await connectInjectedWallet();
+        activeWalletAddress = signature.address;
         toast({
           title: signature.mode === "wallet" ? "真实钱包已签名" : "已连接演示钱包",
           description: signature.mode === "wallet" ? "创建代币将记录到当前钱包地址。" : "已启用开发演示钱包。",
@@ -333,6 +349,7 @@ const Create = () => {
       }
     }
     setIsCreating(true);
+    setCreationStep("请在钱包中确认创建代币");
     try {
       let tx: Awaited<ReturnType<typeof createTokenOnChain>> | null = null;
       try {
@@ -361,6 +378,20 @@ const Create = () => {
           }),
           lpDeadline: values.lpEndTime,
         });
+        confirmedTokenAddress = tx.tokenAddress;
+        setCreationStep("代币已创建，准备添加初始流动性");
+        if (activeWalletAddress) {
+          void apiRequest("/api/chain-transactions", {
+            method: "POST",
+            body: JSON.stringify({
+              txHash: tx.txHash,
+              action: "createToken",
+              tokenAddress: tx.tokenAddress,
+              walletAddress: activeWalletAddress,
+              status: "confirmed",
+            }),
+          }).catch(() => undefined);
+        }
       } catch (error) {
         if (!enableDemoFallback) {
           toast({
@@ -394,20 +425,83 @@ const Create = () => {
           releaseType: values.lpReleaseType,
           releaseLinearDays: values.lpLinearDays,
         });
+      } else {
+        const initialTokenAmount = formatUnits(
+          parseUnits(String(TOTAL_SUPPLY), 18) * creatorShares / totalShares,
+          18,
+        );
+        const lockPeriodSeconds = 30 * 24 * 60 * 60;
+        const unlockAt = Math.floor(Date.now() / 1000) + lockPeriodSeconds;
+        const releaseStart = unlockAt;
+        const linearDays = Math.max(1, Number(values.lpLinearDays || "1"));
+        const releaseEnd = values.lpReleaseType === "linear"
+          ? releaseStart + linearDays * 24 * 60 * 60
+          : releaseStart;
+        const stepLabels = {
+          approveToken: "请确认代币授权，随后将自动添加流动性",
+          addLiquidity: "请确认 PancakeSwap 添加流动性交易",
+          approveLp: "请确认 LP Token 锁仓授权",
+          lockLp: "请确认 LP Vault 锁仓交易",
+        } as const;
+        const lpResult = await addLiquidityEthAndLock({
+          tokenAddress: tx.tokenAddress,
+          tokenAmount: initialTokenAmount,
+          bnbAmount: teamLpValue.toFixed(18).replace(/0+$/, "").replace(/\.$/, ""),
+          slippagePercent: 1,
+          unlockAt,
+          releaseType: values.lpReleaseType === "linear" ? "linear" : "once",
+          releaseStart,
+          releaseEnd,
+          onStep: (step) => setCreationStep(stepLabels[step]),
+        });
+        if (activeWalletAddress) {
+          await Promise.allSettled([
+            apiRequest("/api/chain-transactions", {
+              method: "POST",
+              body: JSON.stringify({
+                txHash: lpResult.addLiquidityTxHash,
+                action: "addLiquidity",
+                tokenAddress: tx.tokenAddress,
+                walletAddress: activeWalletAddress,
+                status: "confirmed",
+                payload: { pairAddress: lpResult.pairAddress, bnbAmount: teamLpValue, tokenAmount: initialTokenAmount },
+              }),
+            }),
+            apiRequest("/api/chain-transactions", {
+              method: "POST",
+              body: JSON.stringify({
+                txHash: lpResult.lockTxHash,
+                action: "lockLp",
+                tokenAddress: tx.tokenAddress,
+                walletAddress: activeWalletAddress,
+                status: "confirmed",
+                payload: { pairAddress: lpResult.pairAddress, lpAmount: lpResult.lpAmount, unlockAt },
+              }),
+            }),
+          ]);
+        }
+        toast({
+          title: "代币、流动性和 LP 锁仓已完成",
+          description: `Pair: ${lpResult.pairAddress.slice(0, 10)}... · LP ${lpResult.lpAmount}`,
+        });
       }
-      toast({
-        title: tx ? "链上创建交易已提交，项目将自动上线" : "开发演示代币已自动上线",
-        description: tx ? `${values.name} (${values.symbol}) tx: ${tx.txHash.slice(0, 10)}...，确认后页面会自动更新。` : `${values.name} (${values.symbol}) 已进入已上线列表。`,
-      });
+      if (!tx) {
+        toast({ title: "开发演示代币已自动上线", description: `${values.name} (${values.symbol}) 已进入已上线列表。` });
+      }
       setIsCreating(false);
+      setCreationStep("");
       navigate(`/lp-launch/${values.symbol.toUpperCase()}`);
     } catch (error) {
       setIsCreating(false);
+      setCreationStep("");
       toast({
-        title: "链上创建失败",
+        title: confirmedTokenAddress ? "代币已创建，但初始流动性未完成" : "链上创建失败",
         description: error instanceof Error ? error.message : "请检查钱包网络、余额和签名状态。",
         variant: "destructive",
       });
+      if (confirmedTokenAddress) {
+        navigate(`/lp-launch/${values.symbol.toUpperCase()}`);
+      }
     }
   };
 
@@ -573,13 +667,13 @@ const Create = () => {
                 <FormField control={form.control} name="lpCurrency" render={({ field }) => (
                   <FormItem>
                     <FormLabel>添加 LP 价值币 *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value="BNB" disabled>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        <SelectItem value="USDT">USDT</SelectItem>
                         <SelectItem value="BNB">BNB</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormDescription>真实自动加池当前使用 PancakeSwap BNB 交易对。</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -770,13 +864,20 @@ const Create = () => {
                 </AlertDescription>
               </Alert>
 
+              {isCreating && creationStep && (
+                <Alert>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <AlertDescription>{creationStep}。请不要关闭页面或切换钱包。</AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => navigate("/")} disabled={isCreating}>
                   取消
                 </Button>
                 <Button type="submit" className="flex-1 bg-gradient-primary hover:shadow-glow" disabled={isCreating}>
                   {isCreating ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />创建中...</>
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />处理中...</>
                   ) : "创建代币"}
                 </Button>
               </div>
