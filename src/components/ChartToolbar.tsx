@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ChevronLeft, ChevronRight, Star, TrendingUp, User } from "lucide-react";
 import { useMvp } from "@/contexts/MvpContext";
+import TokenLogo from "@/components/TokenLogo";
 
 interface ChartToolbarProps {
   onCollapseChange?: (collapsed: boolean) => void;
@@ -43,9 +43,7 @@ const ChartToolbar = ({ onCollapseChange }: ChartToolbarProps) => {
         key={token.symbol}
         className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer transition-colors"
       >
-        <Avatar className="h-8 w-8">
-          <AvatarFallback>{token.logo || token.symbol.slice(0, 2)}</AvatarFallback>
-        </Avatar>
+        <TokenLogo value={token.logo} symbol={token.symbol} className="h-8 w-8 shrink-0 text-xs" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-0.5">
             <span className="font-medium text-sm">{token.symbol}</span>
