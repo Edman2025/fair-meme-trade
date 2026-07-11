@@ -38,12 +38,17 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Label } from "@/components/ui/label";
 import { useMvp } from "@/contexts/MvpContext";
+import { apiRequest } from "@/lib/backendApi";
+
+type PriorityBuyValue = { amount: string; currency: "USDT" | "BNB" };
 
 const MyTokens = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { tokens, walletAddress } = useMvp();
-  const [priorityBuy, setPriorityBuy] = useState("");
+  const [priorityBuyInputs, setPriorityBuyInputs] = useState<Record<string, PriorityBuyValue>>({});
+  const [savedPriorityBuys, setSavedPriorityBuys] = useState<Record<string, PriorityBuyValue>>({});
+  const [savingPriorityBuy, setSavingPriorityBuy] = useState<string | null>(null);
 
   const myTokens = tokens
     .filter((token) => token.creatorWallet.toLowerCase() === walletAddress.toLowerCase())
@@ -58,14 +63,45 @@ const MyTokens = () => {
       twitter: token.twitter || "",
       telegram: token.telegram || "",
       description: token.description,
+      priorityBuyAmount: token.priorityBuyAmount,
+      priorityBuyCurrency: token.priorityBuyCurrency,
     }));
 
-  const handleSetPriorityBuy = () => {
-    toast({
-      title: "优先购买设置成功",
-      description: `优先购买金额：${priorityBuy} USDT`,
-    });
-    setPriorityBuy("");
+  const handleSetPriorityBuy = async (symbol: string) => {
+    const input = priorityBuyInputs[symbol] || { amount: "", currency: "USDT" as const };
+    const amount = Number(input.amount);
+    const minimum = input.currency === "USDT" ? 10 : 0.01;
+    if (!Number.isFinite(amount) || amount < minimum) {
+      toast({
+        title: "金额不符合要求",
+        description: `最低 ${minimum} ${input.currency}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setSavingPriorityBuy(symbol);
+    try {
+      const updated = await apiRequest<{ priorityBuyAmount: string; priorityBuyCurrency: "USDT" | "BNB" }>(`/api/tokens/${encodeURIComponent(symbol)}/priority-buy`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      setSavedPriorityBuys((current) => ({
+        ...current,
+        [symbol]: { amount: updated.priorityBuyAmount, currency: updated.priorityBuyCurrency },
+      }));
+      toast({
+        title: "优先购买设置成功",
+        description: `优先购买金额：${updated.priorityBuyAmount} ${updated.priorityBuyCurrency}，设置后不可修改。`,
+      });
+    } catch (error) {
+      toast({
+        title: "优先购买设置失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPriorityBuy(null);
+    }
   };
 
   return (
@@ -141,29 +177,55 @@ const MyTokens = () => {
                           {/* 优先购买 */}
                           <div className="space-y-3 border-t pt-4">
                             <h3 className="font-semibold">优先购买金额（限设置一次）</h3>
-                            <div className="flex gap-2">
-                              <Input
-                                type="number"
-                                placeholder="优先购买金额"
-                                value={priorityBuy}
-                                onChange={(e) => setPriorityBuy(e.target.value)}
-                              />
-                              <Select defaultValue="USDT">
-                                <SelectTrigger className="w-32">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="USDT">USDT</SelectItem>
-                                  <SelectItem value="BNB">BNB</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button onClick={handleSetPriorityBuy}>
-                                设置
-                              </Button>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              最低10 USDT或0.01 BNB
-                            </p>
+                            {(() => {
+                              const saved = savedPriorityBuys[token.symbol] || (token.priorityBuyAmount ? {
+                                amount: token.priorityBuyAmount,
+                                currency: token.priorityBuyCurrency || "USDT",
+                              } : undefined);
+                              const input = priorityBuyInputs[token.symbol] || { amount: "", currency: "USDT" as const };
+                              if (saved) {
+                                return (
+                                  <div className="rounded-md border bg-muted/40 px-4 py-3">
+                                    <p className="font-medium">{saved.amount} {saved.currency}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">已在创建代币时或首次管理时设置，不能再次修改。</p>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      min={input.currency === "USDT" ? "10" : "0.01"}
+                                      step="any"
+                                      placeholder="优先购买金额"
+                                      value={input.amount}
+                                      onChange={(event) => setPriorityBuyInputs((current) => ({
+                                        ...current,
+                                        [token.symbol]: { ...input, amount: event.target.value },
+                                      }))}
+                                    />
+                                    <Select
+                                      value={input.currency}
+                                      onValueChange={(currency: "USDT" | "BNB") => setPriorityBuyInputs((current) => ({
+                                        ...current,
+                                        [token.symbol]: { ...input, currency },
+                                      }))}
+                                    >
+                                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="USDT">USDT</SelectItem>
+                                        <SelectItem value="BNB">BNB</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <Button disabled={savingPriorityBuy === token.symbol} onClick={() => handleSetPriorityBuy(token.symbol)}>
+                                      {savingPriorityBuy === token.symbol ? "设置中" : "设置"}
+                                    </Button>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">最低 10 USDT 或 0.01 BNB，保存后不能修改。</p>
+                                </>
+                              );
+                            })()}
                           </div>
 
                           {/* 编辑媒体信息 */}

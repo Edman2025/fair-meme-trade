@@ -930,6 +930,62 @@ describe("server routes", () => {
     await app.close();
   });
 
+  it("sets a token priority buy once for its creator", async () => {
+    const { buildApp } = await import("../src/app");
+    const { issueToken } = await import("../src/lib/auth");
+    const app = await buildApp();
+    const token = issueToken("0xcreator");
+    mocks.selectResults.push([{
+      id: 7,
+      symbol: "PRL",
+      creatorAddress: "0xcreator",
+      priorityBuyAmount: null,
+    }]);
+    mocks.updateReturns.push([{
+      id: 7,
+      symbol: "PRL",
+      priorityBuyAmount: "10",
+      priorityBuyCurrency: "USDT",
+    }]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/tokens/PRL/priority-buy",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { amount: "10", currency: "USDT" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ priorityBuyAmount: "10", priorityBuyCurrency: "USDT" });
+    expect(mocks.updateCalls.at(-1)).toMatchObject({ priorityBuyAmount: "10", priorityBuyCurrency: "USDT" });
+    await app.close();
+  });
+
+  it("rejects changing an existing token priority buy", async () => {
+    const { buildApp } = await import("../src/app");
+    const { issueToken } = await import("../src/lib/auth");
+    const app = await buildApp();
+    const token = issueToken("0xcreator");
+    mocks.selectResults.push([{
+      id: 7,
+      symbol: "PRL",
+      creatorAddress: "0xcreator",
+      priorityBuyAmount: "10",
+      priorityBuyCurrency: "USDT",
+    }]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/tokens/PRL/priority-buy",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { amount: "20", currency: "USDT" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: "Priority buy has already been set" });
+    await app.close();
+  });
+
   it("filters indexer status to the active deployment addresses", async () => {
     const { buildApp } = await import("../src/app");
     const app = await buildApp();

@@ -299,6 +299,20 @@ const Create = () => {
   };
 
   const onSubmit = async (values: FormValues) => {
+    if (values.openingBuyAmount) {
+      const openingBuyAmount = Number(values.openingBuyAmount);
+      const openingBuyCurrency = values.openingBuyCurrency || "USDT";
+      const minimumOpeningBuy = openingBuyCurrency === "USDT" ? 10 : 0.01;
+      if (!Number.isFinite(openingBuyAmount) || openingBuyAmount < minimumOpeningBuy) {
+        form.setError("openingBuyAmount", { message: `最低 ${minimumOpeningBuy} ${openingBuyCurrency}` });
+        toast({
+          title: "优先购买金额不符合要求",
+          description: `最低 ${minimumOpeningBuy} ${openingBuyCurrency}`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     const liquidityUsdValue = values.lpCurrency === "USDT" ? teamLpValue : bnbUsdPrice ? teamLpValue * bnbUsdPrice : 0;
     if (values.lpCurrency === "BNB" && !bnbUsdPrice) {
       form.setError("teamLpShares", { message: "无法读取 BNB/USDT 价格，暂不能校验 10U 最低流动性" });
@@ -356,6 +370,10 @@ const Create = () => {
               valueUsd: liquidityUsdValue,
               minimumUsd: MIN_INITIAL_LP_USD,
             },
+            priorityBuy: values.openingBuyAmount && Number(values.openingBuyAmount) > 0 ? {
+              amount: values.openingBuyAmount,
+              currency: values.openingBuyCurrency || "USDT",
+            } : undefined,
           }),
           lpDeadline: values.lpEndTime,
         });

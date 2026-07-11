@@ -18,6 +18,8 @@ export const tokens = pgTable("tokens", {
   metadataUri: text("metadata_uri").notNull(),
   pairToken: text("pair_token").notNull(),
   projectId: integer("project_id").notNull(),
+  priorityBuyAmount: numeric("priority_buy_amount"),
+  priorityBuyCurrency: text("priority_buy_currency"),
   status: text("status").notNull().default("building"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({

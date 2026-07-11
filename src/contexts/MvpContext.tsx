@@ -43,6 +43,8 @@ export interface Token {
   releaseLinearDays?: number;
   marketMetricsReady?: boolean;
   pairAddress?: string;
+  priorityBuyAmount?: string;
+  priorityBuyCurrency?: "USDT" | "BNB";
 }
 
 export interface WalletBalance {
@@ -294,6 +296,8 @@ type ServerToken = {
   metadataUri: string;
   pairToken: string;
   status: TokenStatus;
+  priorityBuyAmount?: string | null;
+  priorityBuyCurrency?: string | null;
 };
 
 type ServerTokenMetrics = {
@@ -371,7 +375,14 @@ const parseTokenMetadata = (metadataUri?: string) => {
   try {
     const parsed = JSON.parse(metadataUri);
     if (parsed && typeof parsed === "object") {
-      return parsed as { description?: string; logo?: string; website?: string; twitter?: string; telegram?: string };
+      return parsed as {
+        description?: string;
+        logo?: string;
+        website?: string;
+        twitter?: string;
+        telegram?: string;
+        priorityBuy?: { amount?: string; currency?: string };
+      };
     }
   } catch {
     return { description: metadataUri };
@@ -404,6 +415,8 @@ const tokenFromServer = (token: ServerToken): Token => {
     category: "meme",
     isFollowing: true,
     marketMetricsReady: false,
+    priorityBuyAmount: token.priorityBuyAmount || metadata.priorityBuy?.amount,
+    priorityBuyCurrency: (token.priorityBuyCurrency || metadata.priorityBuy?.currency) as "USDT" | "BNB" | undefined,
   };
 };
 

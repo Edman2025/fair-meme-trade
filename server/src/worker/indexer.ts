@@ -174,6 +174,15 @@ const handleLog = async (log: IndexerLog) => {
   if (parsed.name === "TokenCreated") {
     const projectId = Number(payload.projectId);
     const symbol = String(payload.symbol).toUpperCase();
+    let priorityBuy: { amount?: string; currency?: string } = {};
+    try {
+      const metadata = JSON.parse(String(payload.metadataURI)) as { priorityBuy?: { amount?: string; currency?: string } };
+      priorityBuy = metadata.priorityBuy || {};
+    } catch {
+      // Legacy metadata can be an IPFS URI and has no embedded priority-buy setting.
+    }
+    const priorityBuyAmount = priorityBuy.amount && Number(priorityBuy.amount) > 0 ? priorityBuy.amount : null;
+    const priorityBuyCurrency = priorityBuyAmount && ["USDT", "BNB"].includes(priorityBuy.currency || "") ? priorityBuy.currency : null;
     await db.insert(tokens).values({
       symbol,
       name: String(payload.name),
@@ -182,6 +191,8 @@ const handleLog = async (log: IndexerLog) => {
       metadataUri: String(payload.metadataURI),
       pairToken: String(payload.pairToken),
       projectId,
+      priorityBuyAmount,
+      priorityBuyCurrency,
       status: "launched",
     }).onConflictDoUpdate({
       target: tokens.symbol,
@@ -192,6 +203,8 @@ const handleLog = async (log: IndexerLog) => {
         metadataUri: String(payload.metadataURI),
         pairToken: String(payload.pairToken),
         projectId,
+        priorityBuyAmount,
+        priorityBuyCurrency,
         status: "launched",
       },
     });

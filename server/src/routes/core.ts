@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyReply } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { parseUnits } from "ethers";
 import { db } from "../db/client";
 import { apiKeys, chainTransactions, commissions, indexedEvents, indexerState, lpPositions, nodeApplications, orders, reviewQueue, tokens, withdrawals } from "../db/schema";
@@ -151,6 +151,41 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
     const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
     if (!token) return reply.code(404).send({ error: "Token not found" });
     return token;
+  });
+  app.post<{ Params: { symbol: string }; Body: { amount?: string; currency?: string } }>("/api/tokens/:symbol/priority-buy", async (request, reply) => {
+    let user;
+    try {
+      user = requireUser(request);
+    } catch (error) {
+      return sendAuthError(reply, error);
+    }
+    const amount = String(request.body.amount || "").trim();
+    const currency = String(request.body.currency || "").toUpperCase();
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return reply.code(400).send({ error: "Priority buy amount must be greater than zero" });
+    }
+    if (!(["USDT", "BNB"] as const).includes(currency as "USDT" | "BNB")) {
+      return reply.code(400).send({ error: "Priority buy currency must be USDT or BNB" });
+    }
+    if ((currency === "USDT" && numericAmount < 10) || (currency === "BNB" && numericAmount < 0.01)) {
+      return reply.code(400).send({ error: currency === "USDT" ? "Minimum priority buy is 10 USDT" : "Minimum priority buy is 0.01 BNB" });
+    }
+    const symbol = request.params.symbol.toUpperCase();
+    const [token] = await db.select().from(tokens).where(eq(tokens.symbol, symbol)).limit(1);
+    if (!token) return reply.code(404).send({ error: "Token not found" });
+    if (token.creatorAddress.toLowerCase() !== user.address && !user.isAdmin) {
+      return reply.code(403).send({ error: "Only the token creator can set priority buy" });
+    }
+    if (token.priorityBuyAmount) {
+      return reply.code(409).send({ error: "Priority buy has already been set" });
+    }
+    const [updated] = await db.update(tokens).set({
+      priorityBuyAmount: amount,
+      priorityBuyCurrency: currency,
+    }).where(and(eq(tokens.id, token.id), isNull(tokens.priorityBuyAmount))).returning();
+    if (!updated) return reply.code(409).send({ error: "Priority buy has already been set" });
+    return updated;
   });
   app.get<{ Params: { symbol: string } }>("/api/tokens/:symbol/metrics", async (request, reply) => {
     const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
