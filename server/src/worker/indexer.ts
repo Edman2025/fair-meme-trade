@@ -35,6 +35,9 @@ const wsProvider = env.indexerWsUrl ? new WebSocketProvider(env.indexerWsUrl) : 
 const windowSize = env.indexerWindowSize;
 const publicRpcBackfillBlocks = env.indexerPublicRpcBackfillBlocks;
 const receiptFallbackBlocks = env.indexerReceiptFallbackBlocks;
+const indexedContractAddresses = [env.factoryAddress, env.lpVaultAddress, env.commissionVaultAddress]
+  .filter(Boolean)
+  .map((address) => address.toLowerCase());
 
 type IndexerLog = {
   address: string;
@@ -302,7 +305,7 @@ const handleLog = async (log: IndexerLog) => {
 
 export const runIndexerOnce = async () => {
   const latestBlock = await provider.getBlockNumber();
-  const addresses = [env.factoryAddress, env.lpVaultAddress, env.commissionVaultAddress].filter(Boolean);
+  const addresses = indexedContractAddresses;
   const receiptLogCache = new Map<number, Promise<IndexerLog[]>>();
   for (const address of addresses) {
     const state = await getState(address, latestBlock);
@@ -368,7 +371,7 @@ export const runIndexerOnce = async () => {
 export const runWebsocketIndexer = async () => {
   if (!wsProvider) throw new Error("INDEXER_WS_URL is not configured");
   const latestBlock = await wsProvider.getBlockNumber();
-  const addresses = [env.factoryAddress, env.lpVaultAddress, env.commissionVaultAddress].filter(Boolean);
+  const addresses = indexedContractAddresses;
 
   await Promise.all(addresses.map((address) => updateIndexedBlock(address, latestBlock, "WebSocket realtime indexer initialized")));
 
