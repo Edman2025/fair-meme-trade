@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import { formatTokenPrice, formatAmount } from "@/lib/utils";
 import { useMvp } from "@/contexts/MvpContext";
 
@@ -12,6 +12,7 @@ const OrderBook = ({ symbol = "ROCKET" }: OrderBookProps) => {
   const { t } = useLanguage();
   const { getOrderBook } = useMvp();
   const { buys: buyOrders, sells: sellOrders, currentPrice, change24h } = getOrderBook(symbol);
+  const hasDepth = buyOrders.length > 0 || sellOrders.length > 0;
 
   const OrderRow = ({
     price,
@@ -29,9 +30,9 @@ const OrderBook = ({ symbol = "ROCKET" }: OrderBookProps) => {
         type === "buy" ? "success" : "destructive"
       }/5 cursor-pointer transition-colors`}
     >
-      <span className={type === "buy" ? "text-success" : "text-destructive"}>${formatTokenPrice(price)}</span>
+      <span className={type === "buy" ? "text-success" : "text-destructive"}>{formatTokenPrice(price)} BNB</span>
       <span className="text-muted-foreground text-right">{formatAmount(amount)}</span>
-      <span className="text-muted-foreground text-right">${formatAmount(total)}</span>
+      <span className="text-muted-foreground text-right">{formatAmount(total)} BNB</span>
     </div>
   );
 
@@ -50,28 +51,38 @@ const OrderBook = ({ symbol = "ROCKET" }: OrderBookProps) => {
           <span className="text-right">{t("total")}</span>
         </div>
 
-        {/* Sell Orders */}
-        <div className="space-y-0.5 mb-4">
-          {[...sellOrders].reverse().map((order, idx) => (
-            <OrderRow key={`sell-${idx}`} {...order} type="sell" />
-          ))}
-        </div>
+        {hasDepth ? (
+          <>
+            <div className="space-y-0.5 mb-4">
+              {[...sellOrders].reverse().map((order, idx) => (
+                <OrderRow key={`sell-${idx}`} {...order} type="sell" />
+              ))}
+            </div>
 
-        {/* Current Price */}
-        <div className="py-3 px-2 bg-primary/10 rounded-lg mb-4 text-center">
-          <div className="text-xl font-bold text-primary">${formatTokenPrice(currentPrice)}</div>
-          <div className={`text-xs flex items-center justify-center gap-1 mt-1 ${change24h >= 0 ? "text-success" : "text-destructive"}`}>
-            {change24h >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            <span>{change24h >= 0 ? "+" : ""}{change24h.toFixed(2)}%</span>
+            <div className="py-3 px-2 bg-primary/10 rounded-lg mb-4 text-center">
+              <div className="text-xl font-bold text-primary">{currentPrice === null ? "等待 Pair" : `${formatTokenPrice(currentPrice)} BNB`}</div>
+              {change24h !== null && (
+                <div className={`text-xs flex items-center justify-center gap-1 mt-1 ${change24h >= 0 ? "text-success" : "text-destructive"}`}>
+                  <TrendingUp className="h-3 w-3" />
+                  <span>{change24h >= 0 ? "+" : ""}{change24h.toFixed(2)}%</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-0.5">
+              {buyOrders.map((order, idx) => (
+                <OrderRow key={`buy-${idx}`} {...order} type="buy" />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="rounded border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+            暂无真实订单簿深度。AMM 交易以 PancakeSwap Pair 储备报价为准。
+            {currentPrice !== null && (
+              <div className="mt-3 text-lg font-bold text-primary">{formatTokenPrice(currentPrice)} BNB</div>
+            )}
           </div>
-        </div>
-
-        {/* Buy Orders */}
-        <div className="space-y-0.5">
-          {buyOrders.map((order, idx) => (
-            <OrderRow key={`buy-${idx}`} {...order} type="buy" />
-          ))}
-        </div>
+        )}
       </div>
     </Card>
   );

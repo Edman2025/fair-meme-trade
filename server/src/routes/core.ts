@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyReply } from "fastify";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { parseUnits } from "ethers";
 import { db } from "../db/client";
 import { apiKeys, chainTransactions, commissions, indexedEvents, indexerState, lpPositions, nodeApplications, orders, reviewQueue, tokens, withdrawals } from "../db/schema";
@@ -8,6 +8,7 @@ import { hashApiKey, newApiKey } from "../lib/auth";
 import { isApiKeyRequest, requireAdmin, requireApiKeyScope, requireUser, requireWalletWrite, sendAuthError } from "../lib/http";
 import { env } from "../env";
 import { getHolderAnalytics } from "../lib/holderAnalytics";
+import { getMarketSeries, getOrderBook, getTokenCreationBlock, getTokenMetrics, presentTokenMetrics } from "../lib/marketData";
 
 const sendRouteError = (reply: FastifyReply, error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : fallback;
@@ -35,14 +36,41 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
     if (!token) return reply.code(404).send({ error: "Token not found" });
     return token;
   });
+  app.get<{ Params: { symbol: string } }>("/api/tokens/:symbol/metrics", async (request, reply) => {
+    const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
+    if (!token) return reply.code(404).send({ error: "Token not found" });
+    try {
+      const metrics = await getTokenMetrics(token);
+      return presentTokenMetrics(metrics);
+    } catch (error) {
+      return sendRouteError(reply, error, "Token metrics failed");
+    }
+  });
+  app.get<{ Params: { symbol: string }; Querystring: { timeframe?: string } }>("/api/tokens/:symbol/market-series", async (request, reply) => {
+    const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
+    if (!token) return reply.code(404).send({ error: "Token not found" });
+    try {
+      return {
+        timeframe: request.query.timeframe || "1m",
+        ...(await getMarketSeries(token)),
+      };
+    } catch (error) {
+      return sendRouteError(reply, error, "Market series failed");
+    }
+  });
+  app.get<{ Params: { symbol: string } }>("/api/tokens/:symbol/order-book", async (request, reply) => {
+    const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
+    if (!token) return reply.code(404).send({ error: "Token not found" });
+    try {
+      return getOrderBook(token);
+    } catch (error) {
+      return sendRouteError(reply, error, "Order book failed");
+    }
+  });
   app.get<{ Params: { symbol: string }; Querystring: { limit?: string } }>("/api/tokens/:symbol/holders", async (request, reply) => {
     const [token] = await db.select().from(tokens).where(eq(tokens.symbol, request.params.symbol.toUpperCase())).limit(1);
     if (!token) return reply.code(404).send({ error: "Token not found" });
-    const [creationEvent] = await db.select().from(indexedEvents).where(and(
-      eq(indexedEvents.tokenAddress, token.tokenAddress),
-      eq(indexedEvents.eventName, "TokenCreated"),
-    )).orderBy(asc(indexedEvents.blockNumber)).limit(1);
-    const fromBlock = creationEvent?.blockNumber || Math.max(0, Number(token.projectId || 0));
+    const fromBlock = await getTokenCreationBlock(token);
     try {
       return await getHolderAnalytics({
         tokenAddress: token.tokenAddress,

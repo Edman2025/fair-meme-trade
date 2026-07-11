@@ -240,6 +240,20 @@ const LpLaunch = () => {
       const result = data.releaseType === "linear" && Number(releasable) > 0
         ? await releaseVaultPositionAmount(userPosition.onChainPositionId, releasable)
         : await withdrawVaultPosition(userPosition.onChainPositionId);
+      await apiRequest("/api/chain-transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          txHash: result.txHash,
+          action: data.releaseType === "linear" && Number(releasable) > 0 ? "releaseLp" : "withdrawLp",
+          tokenAddress: token.contractAddress,
+          walletAddress: walletAddress || result.account,
+          status: "submitted",
+          payload: {
+            positionId: userPosition.onChainPositionId,
+            amount: data.releaseType === "linear" && Number(releasable) > 0 ? releasable : undefined,
+          },
+        }),
+      });
       toast({
         title: "LP 提取交易已提交",
         description: `${result.txHash.slice(0, 10)}...，最终状态以 indexer 回写为准。`,

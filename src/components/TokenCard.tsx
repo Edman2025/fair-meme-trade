@@ -24,6 +24,7 @@ interface TokenCardProps {
   twitter?: string;
   telegram?: string;
   status?: "launched" | "pending" | "building";
+  marketMetricsReady?: boolean;
 }
 
 const TokenCard = ({
@@ -46,6 +47,7 @@ const TokenCard = ({
   twitter,
   telegram,
   status = "launched",
+  marketMetricsReady,
 }: TokenCardProps) => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -80,16 +82,20 @@ const TokenCard = ({
             </div>
           </div>
           <div className="text-right">
-            <div className={`flex items-center justify-end gap-1 ${isPositive ? "text-success" : "text-destructive"} animate-fade-in`}>
-              {isPositive ? (
-                <TrendingUp className="h-4 w-4" />
-              ) : (
-                <TrendingDown className="h-4 w-4" />
-              )}
-              <span className="text-sm font-semibold">
-                {isPositive ? "+" : ""}{change24h.toFixed(2)}%
-              </span>
-            </div>
+            {marketMetricsReady ? (
+              <div className={`flex items-center justify-end gap-1 ${isPositive ? "text-success" : "text-destructive"} animate-fade-in`}>
+                {isPositive ? (
+                  <TrendingUp className="h-4 w-4" />
+                ) : (
+                  <TrendingDown className="h-4 w-4" />
+                )}
+                <span className="text-sm font-semibold">
+                  {isPositive ? "+" : ""}{change24h.toFixed(2)}%
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">指标同步中</p>
+            )}
             <p className="text-sm font-bold text-foreground mt-1 animate-scale-in">{currentPrice}</p>
           </div>
         </div>

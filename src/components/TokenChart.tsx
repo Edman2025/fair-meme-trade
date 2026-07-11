@@ -36,15 +36,11 @@ const TokenChart = ({ symbol }: TokenChartProps) => {
   const priceData = getMarketSeries(symbol, timeframe);
 
   const klineData = useMemo(() => priceData.map((point, index) => {
-    const previousClose = index > 0 ? priceData[index - 1].price : point.price * 0.998;
-    const open = previousClose;
-    const close = point.price;
-    const bodyMove = Math.abs(close - open);
-    const baseSpread = Math.max(close * 0.004, bodyMove * 0.55, 0.00000001);
-    const upperFactor = 0.55 + ((index % 5) * 0.12);
-    const lowerFactor = 0.45 + (((index + 2) % 5) * 0.1);
-    const high = Math.max(open, close) + baseSpread * upperFactor;
-    const low = Math.max(0.00000001, Math.min(open, close) - baseSpread * lowerFactor);
+    const fallbackClose = point.price || 0;
+    const open = point.open ?? fallbackClose;
+    const high = point.high ?? fallbackClose;
+    const low = point.low ?? fallbackClose;
+    const close = point.close ?? fallbackClose;
     return {
       ...point,
       open,
@@ -56,8 +52,9 @@ const TokenChart = ({ symbol }: TokenChartProps) => {
   }), [priceData]);
 
   const latestCandle = klineData[klineData.length - 1];
-  const highPrice = klineData.length ? Math.max(...klineData.map((d) => d.high)) : 0;
-  const lowPrice = klineData.length ? Math.min(...klineData.map((d) => d.low)) : 0;
+  const hasKlineData = klineData.length > 0;
+  const highPrice = hasKlineData ? Math.max(...klineData.map((d) => d.high)) : 0;
+  const lowPrice = hasKlineData ? Math.min(...klineData.map((d) => d.low)) : 0;
   const chartHeight = 160;
   const chartPadding = { top: 10, right: 66, bottom: 18, left: 6 };
   const plotWidth = Math.max(chartWidth - chartPadding.left - chartPadding.right, 1);
@@ -454,20 +451,12 @@ const TokenChart = ({ symbol }: TokenChartProps) => {
             {/* OHLC Data Display */}
             <div className="flex items-center gap-4 mb-2 text-sm">
               <span className="text-muted-foreground">K线</span>
-              <span className="text-foreground font-medium">
-                开={latestCandle?.open.toFixed(8) || "0.00000000"}
-              </span>
-              <span className="text-destructive font-medium">
-                高={latestCandle?.high.toFixed(8) || "0.00000000"}
-              </span>
-              <span className="text-success font-medium">
-                低={latestCandle?.low.toFixed(8) || "0.00000000"}
-              </span>
-              <span className={latestCandle?.isUp ? "text-success font-medium" : "text-destructive font-medium"}>
-                收={latestCandle?.close.toFixed(8) || "0.00000000"}
-              </span>
+              <span className="text-foreground font-medium">开={latestCandle?.open.toFixed(8) || "等待成交"}</span>
+              <span className="text-destructive font-medium">高={latestCandle?.high.toFixed(8) || "等待成交"}</span>
+              <span className="text-success font-medium">低={latestCandle?.low.toFixed(8) || "等待成交"}</span>
+              <span className={latestCandle?.isUp ? "text-success font-medium" : "text-destructive font-medium"}>收={latestCandle?.close.toFixed(8) || "等待成交"}</span>
               <span className="text-foreground font-medium ml-auto">
-                {latestCandle?.close.toFixed(8) || "0.00000000"}
+                {latestCandle?.close.toFixed(8) || "真实 K 线等待链上 swap 记录"}
               </span>
             </div>
 
@@ -489,7 +478,7 @@ const TokenChart = ({ symbol }: TokenChartProps) => {
                 viewBox={`0 0 ${Math.max(chartWidth, 1)} ${chartHeight}`}
                 className="block rounded bg-background/20"
               >
-                {gridLines.map((line) => (
+                {hasKlineData ? gridLines.map((line) => (
                   <g key={line.y}>
                     <line
                       x1={chartPadding.left}
@@ -509,7 +498,17 @@ const TokenChart = ({ symbol }: TokenChartProps) => {
                       {line.value.toFixed(7)}
                     </text>
                   </g>
-                ))}
+                )) : (
+                  <text
+                    x={Math.max(chartWidth / 2, 120)}
+                    y={chartHeight / 2}
+                    textAnchor="middle"
+                    fill="hsl(var(--muted-foreground))"
+                    fontSize="13"
+                  >
+                    暂无真实成交 K 线，等待 PancakeSwap 交易记录同步
+                  </text>
+                )}
 
                 {klineData.map((candle, index) => {
                   const x = candleX(index);

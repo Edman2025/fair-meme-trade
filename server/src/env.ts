@@ -33,4 +33,6 @@ export const env = {
   factoryAddress: process.env.VITE_FACTORY_ADDRESS || "",
   lpVaultAddress: process.env.VITE_LP_VAULT_ADDRESS || "",
   commissionVaultAddress: process.env.VITE_COMMISSION_VAULT_ADDRESS || "",
+  pancakeFactoryAddress: process.env.VITE_PANCAKE_FACTORY_ADDRESS || "0x6725F303b657a9451d8BA641348b6761A6CC7a17",
+  wbnbAddress: process.env.VITE_WBNB_ADDRESS || "0xae13d989dac2f0debff460ac112a837c89baa7cd",
 };

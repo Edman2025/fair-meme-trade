@@ -17,7 +17,9 @@ const AnnouncementScroller = () => {
   const announcements = tokens.slice(0, 4).map((token, index) => {
     const style = styles[index % styles.length];
     return {
-      title: `${token.symbol} ${token.change24h >= 0 ? "+" : ""}${token.change24h.toFixed(2)}%`,
+      title: token.marketMetricsReady
+        ? `${token.symbol} ${token.change24h >= 0 ? "+" : ""}${token.change24h.toFixed(2)}%`
+        : token.symbol,
       subtitle: token.status === "launched" ? "已上线项目" : token.status === "building" ? "LP 建设中" : "等待审核",
       date: `${token.name} · ${token.poolAmount || "等待 indexer 同步"}`,
       path: `/token/${token.symbol}`,

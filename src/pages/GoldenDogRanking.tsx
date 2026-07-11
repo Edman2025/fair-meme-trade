@@ -69,7 +69,7 @@ const GoldenDogRanking = () => {
   const [period, setPeriod] = useState<Period>("day");
 
   const baseDataset = tokens
-    .filter((token) => token.status === "launched")
+    .filter((token) => token.status === "launched" && token.marketMetricsReady)
     .map((token) => {
       const dailyVolume = parseMoney(token.volume24h);
       const volumeNum = dailyVolume * periodMultiplier[period];
@@ -228,7 +228,7 @@ const GoldenDogRanking = () => {
                 </div>
               )) : (
                 <div className="rounded border border-dashed border-border p-8 text-center text-muted-foreground">
-                  暂无已上线代币，等待项目审核上线后生成真实排行。
+                  暂无可排行的真实市场指标，等待 PancakeSwap 池子、成交和 holder 数据同步。
                 </div>
               )}
             </div>

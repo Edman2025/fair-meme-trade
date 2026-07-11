@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   updateCalls: [] as unknown[],
   chainCalls: [] as unknown[],
   holderCalls: [] as unknown[],
+  marketCalls: [] as unknown[],
 }));
 
 const makeQuery = (result: unknown[]) => ({
@@ -77,6 +78,8 @@ vi.mock("../src/env", () => ({
     factoryAddress: "0xfactory",
     lpVaultAddress: "0xvault",
     commissionVaultAddress: "0xcommission",
+    pancakeFactoryAddress: "0xpancakefactory",
+    wbnbAddress: "0xwbnb",
   },
 }));
 
@@ -127,6 +130,45 @@ vi.mock("../src/lib/holderAnalytics", () => ({
   },
 }));
 
+vi.mock("../src/lib/marketData", () => ({
+  getTokenCreationBlock: async (token: { tokenAddress: string }) => {
+    mocks.marketCalls.push({ fn: "getTokenCreationBlock", token });
+    return 100;
+  },
+  getTokenMetrics: async (token: { symbol: string }) => {
+    mocks.marketCalls.push({ fn: "getTokenMetrics", token });
+    return {
+      symbol: token.symbol,
+      totalSupply: "1000.0",
+      holderCount: 1,
+      lpCount: 2,
+      currentPriceBnb: 0.001,
+      marketCapBnb: 1,
+      poolBnb: 2,
+      volume24hBnb: null,
+      change24h: null,
+      pairAddress: "0xpair",
+      source: "chain",
+    };
+  },
+  presentTokenMetrics: (metrics: Record<string, unknown>) => ({
+    ...metrics,
+    totalSupplyLabel: metrics.totalSupply,
+    currentPriceLabel: "0.00100000 BNB",
+    marketCapLabel: "1 BNB",
+    poolLabel: "2 BNB",
+    volume24hLabel: null,
+  }),
+  getMarketSeries: async (token: { symbol: string }) => {
+    mocks.marketCalls.push({ fn: "getMarketSeries", token });
+    return { rows: [], source: "chain_transactions" };
+  },
+  getOrderBook: async (token: { symbol: string }) => {
+    mocks.marketCalls.push({ fn: "getOrderBook", token });
+    return { buys: [], sells: [], currentPrice: 0.001, change24h: null, source: "pancake_pair_reserves" };
+  },
+}));
+
 describe("server routes", () => {
   beforeEach(async () => {
     mocks.selectResults.length = 0;
@@ -136,6 +178,7 @@ describe("server routes", () => {
     mocks.updateCalls.length = 0;
     mocks.chainCalls.length = 0;
     mocks.holderCalls.length = 0;
+    mocks.marketCalls.length = 0;
     const { resetRateLimiterForTests } = await import("../src/lib/rateLimiter");
     resetRateLimiterForTests();
   });
@@ -311,6 +354,59 @@ describe("server routes", () => {
       tokenAddress: "0xtoken",
       fromBlock: 100,
       limit: 5,
+    });
+    await app.close();
+  });
+
+  it("returns source-backed token metrics without fake defaults", async () => {
+    const { buildApp } = await import("../src/app");
+    const app = await buildApp();
+    mocks.selectResults.push([{ symbol: "ROCKET", tokenAddress: "0xtoken", projectId: 7 }]);
+
+    const response = await app.inject({ method: "GET", url: "/api/tokens/ROCKET/metrics" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      symbol: "ROCKET",
+      holderCount: 1,
+      lpCount: 2,
+      currentPriceLabel: "0.00100000 BNB",
+      poolLabel: "2 BNB",
+      source: "chain",
+    });
+    expect(mocks.marketCalls[0]).toMatchObject({ fn: "getTokenMetrics" });
+    await app.close();
+  });
+
+  it("returns empty market series instead of synthetic candles without real swaps", async () => {
+    const { buildApp } = await import("../src/app");
+    const app = await buildApp();
+    mocks.selectResults.push([{ symbol: "ROCKET", tokenAddress: "0xtoken", projectId: 7 }]);
+
+    const response = await app.inject({ method: "GET", url: "/api/tokens/ROCKET/market-series?timeframe=1m" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      timeframe: "1m",
+      rows: [],
+      source: "chain_transactions",
+    });
+    await app.close();
+  });
+
+  it("returns AMM reserve price with no fake order-book depth", async () => {
+    const { buildApp } = await import("../src/app");
+    const app = await buildApp();
+    mocks.selectResults.push([{ symbol: "ROCKET", tokenAddress: "0xtoken", projectId: 7 }]);
+
+    const response = await app.inject({ method: "GET", url: "/api/tokens/ROCKET/order-book" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      buys: [],
+      sells: [],
+      currentPrice: 0.001,
+      source: "pancake_pair_reserves",
     });
     await app.close();
   });

@@ -1,18 +1,23 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { useLanguage } from "@/contexts/LanguageContext";
+import { useMvp } from "@/contexts/MvpContext";
 
 const ScrollingBanner = () => {
   const [isPaused, setIsPaused] = useState(false);
-  const { t } = useLanguage();
+  const { tokens } = useMvp();
 
-  const items = [
-    { id: "1", key: "banner1" },
-    { id: "2", key: "banner2" },
-    { id: "3", key: "banner3" },
-    { id: "4", key: "banner4" },
-    { id: "5", key: "banner5" },
-  ];
+  const items = tokens.slice(0, 5).map((token) => ({
+    id: token.contractAddress,
+    text: `${token.symbol} · ${token.status === "launched" ? "已上线" : token.status === "pending" ? "待审核" : "LP 建设中"} · ${token.poolAmount}`,
+  }));
+
+  if (!items.length) {
+    return (
+      <div className="w-full bg-gradient-primary py-3 px-4 text-sm font-medium text-primary-foreground">
+        暂无真实项目动态，等待 indexer 同步。
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-gradient-primary overflow-hidden">
@@ -27,7 +32,7 @@ const ScrollingBanner = () => {
               key={`${item.id}-${index}`}
               className="flex items-center gap-2 whitespace-nowrap text-primary-foreground cursor-pointer hover:opacity-80 transition-opacity"
             >
-              <span className="text-sm font-medium">{t(item.key)}</span>
+              <span className="text-sm font-medium">{item.text}</span>
               <ChevronRight className="h-4 w-4" />
             </div>
           ))}

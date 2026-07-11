@@ -41,6 +41,8 @@ export interface Token {
   lockPeriodDays?: number;
   releaseType?: "oneTime" | "linear";
   releaseLinearDays?: number;
+  marketMetricsReady?: boolean;
+  pairAddress?: string;
 }
 
 export interface WalletBalance {
@@ -104,8 +106,13 @@ export interface WithdrawalRecord {
 
 export interface MarketCandle {
   time: string;
-  price: number;
+  price?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
   volume: number;
+  txHash?: string;
 }
 
 export interface OrderBookRow {
@@ -117,8 +124,9 @@ export interface OrderBookRow {
 export interface OrderBookSnapshot {
   buys: OrderBookRow[];
   sells: OrderBookRow[];
-  currentPrice: number;
-  change24h: number;
+  currentPrice: number | null;
+  change24h: number | null;
+  source?: string;
 }
 
 export interface WalletSignatureRecord {
@@ -233,17 +241,6 @@ const formatAddressSeed = (symbol: string) => {
   return `0x${seed}`;
 };
 
-const parseTokenPrice = (price: string) => Number(price.replace(/[^0-9.]/g, "")) || 0.004;
-
-const seededUnit = (seed: string) => {
-  let hash = 2166136261;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash ^= seed.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) / 4294967295;
-};
-
 const makeHash = (seed: string) => {
   const source = `${seed}-${Date.now()}-${Math.random()}`;
   let hash = "";
@@ -282,60 +279,6 @@ const makeIndexedEvent = (
   ...options,
 });
 
-const buildMarketSeries = (token: Token, timeframe: string, trades: TradeRecord[]): MarketCandle[] => {
-  const base = parseTokenPrice(token.currentPrice);
-  const tradeImpact = trades
-    .filter((trade) => trade.tokenSymbol === token.symbol)
-    .reduce((sum, trade) => sum + (trade.side === "buy" ? 1 : -1) * (Number(trade.amount) || 0) * 0.00001, 0);
-  const candleCount = 50;
-  const labels: Record<string, string> = {
-    "1分": "m",
-    "5分": "5m",
-    "15分": "15m",
-    "1小时": "h",
-    "4小时": "4h",
-    "天": "d",
-    "1H": "m",
-  };
-  return Array.from({ length: candleCount }, (_, index) => {
-    const wave = Math.sin(index / 5 + seededUnit(token.symbol) * 6) * 0.07;
-    const drift = ((index - candleCount / 2) / candleCount) * (token.change24h / 100) * 0.18;
-    const noise = (seededUnit(`${token.symbol}-${timeframe}-${index}`) - 0.5) * 0.035;
-    const price = Math.max(base * (1 + wave + drift + noise + tradeImpact), 0.0000001);
-    const volumeBase = Math.max(parseTokenPrice(token.volume24h) || 80000, 20000);
-    const volume = volumeBase * (0.35 + seededUnit(`${timeframe}-${token.symbol}-volume-${index}`));
-    return {
-      time: `${index * 2}${labels[timeframe] || "m"}`,
-      price,
-      volume,
-    };
-  });
-};
-
-const buildOrderBook = (token: Token, trades: TradeRecord[]): OrderBookSnapshot => {
-  const currentPrice = parseTokenPrice(token.currentPrice);
-  const netTradeAmount = trades
-    .filter((trade) => trade.tokenSymbol === token.symbol)
-    .reduce((sum, trade) => sum + (trade.side === "buy" ? 1 : -1) * (Number(trade.amount) || 0), 0);
-  const adjustedPrice = Math.max(currentPrice * (1 + netTradeAmount * 0.00001), 0.0000001);
-  const makeRows = (type: "buy" | "sell"): OrderBookRow[] => Array.from({ length: 10 }, (_, index) => {
-    const spread = adjustedPrice * (0.0025 + index * 0.002);
-    const price = type === "buy" ? adjustedPrice - spread : adjustedPrice + spread;
-    const amount = 15000 + seededUnit(`${token.symbol}-${type}-${index}`) * 90000;
-    return {
-      price,
-      amount,
-      total: price * amount,
-    };
-  });
-  return {
-    buys: makeRows("buy"),
-    sells: makeRows("sell"),
-    currentPrice: adjustedPrice,
-    change24h: token.change24h,
-  };
-};
-
 const hydrateTokenContracts = (tokens: Token[]) => tokens.map((token) => (
   token.symbol === "ROCKET" && import.meta.env.VITE_ROCKET_TOKEN_ADDRESS
     ? { ...token, contractAddress: import.meta.env.VITE_ROCKET_TOKEN_ADDRESS }
@@ -351,6 +294,24 @@ type ServerToken = {
   pairToken: string;
   status: TokenStatus;
 };
+
+type ServerTokenMetrics = {
+  holderCount: number | null;
+  lpCount: number;
+  totalSupplyLabel: string | null;
+  currentPriceLabel: string | null;
+  marketCapLabel: string | null;
+  poolLabel: string | null;
+  volume24hLabel: string | null;
+  change24h: number | null;
+  pairAddress: string | null;
+};
+
+type ServerMarketSeries = {
+  rows: MarketCandle[];
+};
+
+type ServerOrderBook = OrderBookSnapshot;
 
 type ServerIndexedEvent = {
   id: number;
@@ -408,14 +369,14 @@ const tokenFromServer = (token: ServerToken): Token => ({
   logo: token.symbol.slice(0, 2).toUpperCase(),
   name: token.name,
   symbol: token.symbol.toUpperCase(),
-  totalSupply: "1B",
+  totalSupply: "等待同步",
   lpCount: 0,
-  holders: 1,
+  holders: 0,
   change24h: 0,
-  currentPrice: "$0.0000",
-  marketCap: "$0",
-  volume24h: "$0",
-  poolAmount: "0 BNB",
+  currentPrice: "等待同步",
+  marketCap: "等待同步",
+  volume24h: "等待同步",
+  poolAmount: "等待同步",
   description: token.metadataUri,
   contractAddress: token.tokenAddress,
   creatorWallet: token.creatorAddress,
@@ -423,7 +384,25 @@ const tokenFromServer = (token: ServerToken): Token => ({
   status: token.status,
   category: "meme",
   isFollowing: true,
+  marketMetricsReady: false,
 });
+
+const applyTokenMetrics = (token: Token, metrics?: ServerTokenMetrics): Token => {
+  if (!metrics) return token;
+  return {
+    ...token,
+    totalSupply: metrics.totalSupplyLabel || "等待同步",
+    lpCount: metrics.lpCount || 0,
+    holders: metrics.holderCount || 0,
+    change24h: metrics.change24h || 0,
+    currentPrice: metrics.currentPriceLabel || "等待同步",
+    marketCap: metrics.marketCapLabel || "等待同步",
+    volume24h: metrics.volume24hLabel || "等待同步",
+    poolAmount: metrics.poolLabel || "等待同步",
+    pairAddress: metrics.pairAddress || undefined,
+    marketMetricsReady: Boolean(metrics.currentPriceLabel || metrics.poolLabel || metrics.totalSupplyLabel || metrics.holderCount),
+  };
+};
 
 const eventFromServer = (event: ServerIndexedEvent): IndexedEvent => ({
   id: String(event.id),
@@ -511,6 +490,8 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
   const [indexedEvents, setIndexedEvents] = useState<IndexedEvent[]>(localState?.indexedEvents || (enableDemoFallback ? initialIndexedEvents : []));
   const [adminQueue, setAdminQueue] = useState<AdminReviewItem[]>(localState?.adminQueue || (enableDemoFallback ? initialAdminQueue : []));
   const [authToken, setAuthToken] = useState(getStoredAuthToken());
+  const [marketSeriesBySymbol, setMarketSeriesBySymbol] = useState<Record<string, MarketCandle[]>>({});
+  const [orderBookBySymbol, setOrderBookBySymbol] = useState<Record<string, OrderBookSnapshot>>({});
 
   useEffect(() => {
     if (!enableDemoFallback) {
@@ -609,17 +590,48 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         const serverTokens = await apiRequest<ServerToken[]>("/api/tokens");
         if (!cancelled && serverTokens.length) {
           const mappedTokens = serverTokens.map(tokenFromServer);
+          const metricPairs = await Promise.all(mappedTokens.map(async (token) => {
+            try {
+              return [token.symbol, await apiRequest<ServerTokenMetrics>(`/api/tokens/${token.symbol}/metrics`)] as const;
+            } catch {
+              return [token.symbol, undefined] as const;
+            }
+          }));
+          const metricsBySymbol = new Map(metricPairs);
+          const enrichedTokens = mappedTokens.map((token) => applyTokenMetrics(token, metricsBySymbol.get(token.symbol)));
+          const [seriesPairs, orderBookPairs] = await Promise.all([
+            Promise.all(enrichedTokens.map(async (token) => {
+              try {
+                const series = await apiRequest<ServerMarketSeries>(`/api/tokens/${token.symbol}/market-series?timeframe=1m`);
+                return [token.symbol, series.rows || []] as const;
+              } catch {
+                return [token.symbol, []] as const;
+              }
+            })),
+            Promise.all(enrichedTokens.map(async (token) => {
+              try {
+                const orderBook = await apiRequest<ServerOrderBook>(`/api/tokens/${token.symbol}/order-book`);
+                return [token.symbol, orderBook] as const;
+              } catch {
+                return [token.symbol, { buys: [], sells: [], currentPrice: null, change24h: null, source: "unavailable" }] as const;
+              }
+            })),
+          ]);
           if (!enableDemoFallback) {
-            setTokens(mappedTokens);
+            setTokens(enrichedTokens);
+            setMarketSeriesBySymbol(Object.fromEntries(seriesPairs));
+            setOrderBookBySymbol(Object.fromEntries(orderBookPairs));
             return;
           }
           setTokens((current) => {
             const bySymbol = new Map(current.map((token) => [token.symbol, token]));
-            for (const token of mappedTokens) {
+            for (const token of enrichedTokens) {
               bySymbol.set(token.symbol, { ...bySymbol.get(token.symbol), ...token });
             }
             return Array.from(bySymbol.values());
           });
+          setMarketSeriesBySymbol((current) => ({ ...current, ...Object.fromEntries(seriesPairs) }));
+          setOrderBookBySymbol((current) => ({ ...current, ...Object.fromEntries(orderBookPairs) }));
         }
       } catch {
         // Local fallback remains the source while the API is unavailable.
@@ -821,9 +833,9 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         logo: input.logo?.trim() || symbol.slice(0, 2),
         name: input.name,
         symbol,
-        totalSupply: "1B",
+        totalSupply: "开发演示",
         lpCount: 1,
-        holders: 1,
+        holders: 0,
         change24h: 0,
         currentPrice: "$0.0000",
         marketCap: `$${Number(input.initialMarketCap || 0).toLocaleString()}`,
@@ -1188,12 +1200,10 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       }
     },
     getMarketSeries: (symbol, timeframe) => {
-      const token = tokens.find((item) => item.symbol === symbol) || tokens[0];
-      return buildMarketSeries(token, timeframe, trades);
+      return marketSeriesBySymbol[symbol] || [];
     },
     getOrderBook: (symbol) => {
-      const token = tokens.find((item) => item.symbol === symbol) || tokens[0];
-      return buildOrderBook(token, trades);
+      return orderBookBySymbol[symbol] || { buys: [], sells: [], currentPrice: null, change24h: null, source: "unavailable" };
     },
   }), [
     adminQueue,
@@ -1204,7 +1214,9 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     indexedEvents,
     isConnected,
     lpPositions,
+    marketSeriesBySymbol,
     nodeApplications,
+    orderBookBySymbol,
     tokens,
     trades,
     walletBalances,

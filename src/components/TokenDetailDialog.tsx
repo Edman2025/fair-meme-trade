@@ -19,8 +19,7 @@ import {
   Heart,
   Share2,
   LineChart,
-  Activity,
-  BarChart3
+  Activity
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import TokenChart from "./TokenChart";
@@ -48,6 +47,7 @@ interface TokenDetailDialogProps {
     hasBurn?: boolean;
     hasMarketing?: boolean;
     contractAddress?: string;
+    marketMetricsReady?: boolean;
   };
 }
 
@@ -110,10 +110,14 @@ const TokenDetailDialog = ({ open, onOpenChange, token }: TokenDetailDialogProps
                 <DialogTitle className="text-2xl mb-1">{token.name}</DialogTitle>
                 <div className="flex items-center gap-3">
                   <p className="text-muted-foreground">{token.symbol}</p>
-                  <div className={`flex items-center gap-1 ${isPositive ? "text-success" : "text-destructive"}`}>
-                    {isPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                    <span className="font-semibold">{isPositive ? "+" : ""}{token.change24h.toFixed(2)}%</span>
-                  </div>
+                  {token.marketMetricsReady ? (
+                    <div className={`flex items-center gap-1 ${isPositive ? "text-success" : "text-destructive"}`}>
+                      {isPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                      <span className="font-semibold">{isPositive ? "+" : ""}{token.change24h.toFixed(2)}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">指标同步中</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -256,8 +260,8 @@ const TokenDetailDialog = ({ open, onOpenChange, token }: TokenDetailDialogProps
 
           {/* Right Column - Trading & Order Book */}
           <div className="space-y-6">
-            <AdvancedTradingPanel tokenSymbol={token.symbol} tokenPrice={0.004123} />
-            <OrderBook />
+            <AdvancedTradingPanel tokenSymbol={token.symbol} tokenPrice={0} />
+            <OrderBook symbol={token.symbol} />
           </div>
         </div>
 

@@ -85,11 +85,11 @@ const translations = {
     loadMore: "Load More Tokens",
     
     // Scrolling Banner
-    banner1: "🚀 New Token: $ROCKET launched with 500 BNB pool!",
-    banner2: "⭐ $STAR activated LP with points - Trade now!",
-    banner3: "🔥 $FIRE latest transaction: 50 BNB buy!",
-    banner4: "💎 $DIAMOND reached 1000 holders milestone!",
-    banner5: "🌙 $MOON LP building phase ending in 2 hours!",
+    banner1: "Real project updates will appear after indexer sync.",
+    banner2: "Token launch status is sourced from backend and chain events.",
+    banner3: "LP status is sourced from PancakeSwap and Vault events.",
+    banner4: "Holder data is sourced from ERC20 transfer history.",
+    banner5: "Trading data appears after real swap records are indexed.",
     
     // Trading
     priceChart: "Price Chart",
@@ -228,11 +228,11 @@ const translations = {
     loadMore: "加载更多代币",
     
     // Scrolling Banner
-    banner1: "🚀 新代币：$ROCKET 已上线，500 BNB 池子！",
-    banner2: "⭐ $STAR 已激活 LP 奖励 - 立即交易！",
-    banner3: "🔥 $FIRE 最新交易：50 BNB 买入！",
-    banner4: "💎 $DIAMOND 达到 1000 持有人里程碑！",
-    banner5: "🌙 $MOON LP 建设阶段将在 2 小时后结束！",
+    banner1: "真实项目动态会在 indexer 同步后展示。",
+    banner2: "代币上线状态来自后端和链上事件。",
+    banner3: "LP 状态来自 PancakeSwap 与 Vault 事件。",
+    banner4: "持有人数据来自 ERC20 Transfer 历史。",
+    banner5: "真实 swap 记录同步后会展示交易数据。",
     
     // Trading
     priceChart: "价格图表",
@@ -371,11 +371,11 @@ const translations = {
     loadMore: "加載更多代幣",
     
     // Scrolling Banner
-    banner1: "🚀 新代幣：$ROCKET 已發射，500 BNB 池子！",
-    banner2: "⭐ $STAR 已激活 LP 積分 - 立即交易！",
-    banner3: "🔥 $FIRE 最新交易：50 BNB 買入！",
-    banner4: "💎 $DIAMOND 達到 1000 個持有者里程碑！",
-    banner5: "🌙 $MOON LP 建設階段將在 2 小時後結束！",
+    banner1: "真實項目動態會在 indexer 同步後展示。",
+    banner2: "代幣上線狀態來自後端和鏈上事件。",
+    banner3: "LP 狀態來自 PancakeSwap 與 Vault 事件。",
+    banner4: "持有人數據來自 ERC20 Transfer 歷史。",
+    banner5: "真實 swap 記錄同步後會展示交易數據。",
     
     // Trading
     priceChart: "價格走勢",
@@ -514,11 +514,11 @@ const translations = {
     loadMore: "さらにトークンを読み込む",
     
     // Scrolling Banner
-    banner1: "🚀 新トークン：$ROCKET が 500 BNB プールでローンチ！",
-    banner2: "⭐ $STAR が LP をポイントで有効化 - 今すぐ取引！",
-    banner3: "🔥 $FIRE の最新取引：50 BNB の買い！",
-    banner4: "💎 $DIAMOND が 1000 ホルダーのマイルストーン達成！",
-    banner5: "🌙 $MOON の LP 構築フェーズが 2 時間後に終了！",
+    banner1: "実プロジェクトの更新は indexer 同期後に表示されます。",
+    banner2: "トークン公開状態はバックエンドとチェーンイベントから取得します。",
+    banner3: "LP 状態は PancakeSwap と Vault イベントから取得します。",
+    banner4: "ホルダーデータは ERC20 Transfer 履歴から取得します。",
+    banner5: "実 swap 記録の同期後に取引データを表示します。",
     
     // Trading
     priceChart: "価格チャート",

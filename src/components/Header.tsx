@@ -308,6 +308,7 @@ const Header = () => {
           <Button
             onClick={handleConnectWallet}
             size="sm"
+            aria-label={isConnected ? shortWalletAddress : t("connect")}
             className={`gap-2 hidden sm:flex ${
               isConnected
                 ? "bg-success hover:bg-success/90"
@@ -351,6 +352,7 @@ const Header = () => {
                     handleConnectWallet();
                     setIsMobileMenuOpen(false);
                   }}
+                  aria-label={isConnected ? shortWalletAddress : t("connect")}
                   className={`gap-2 ${
                     isConnected
                       ? "bg-success hover:bg-success/90"

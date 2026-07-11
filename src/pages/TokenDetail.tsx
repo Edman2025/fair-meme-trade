@@ -25,7 +25,6 @@ import ChartToolbar from "@/components/ChartToolbar";
 import ChartBottomTabs from "@/components/ChartBottomTabs";
 import OrderBook from "@/components/OrderBook";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { formatTokenPrice } from "@/lib/utils";
 import { useMvp } from "@/contexts/MvpContext";
 import { getExplorerAddressUrl } from "@/lib/chainConfig";
 
@@ -174,13 +173,17 @@ const TokenDetail = () => {
             {/* Price, 24h Change, and Project Description */}
             <div className="flex flex-col items-end gap-3">
               <div className="flex flex-col items-end gap-1">
-                <div className="text-2xl font-bold">{token.currentPrice || `$${formatTokenPrice(0.004123)}`}</div>
+                <div className="text-2xl font-bold">{token.currentPrice || "等待同步"}</div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">{token.name}</span>
-                  <div className={`flex items-center gap-1 ${isPositive ? "text-success" : "text-destructive"}`}>
-                    {isPositive ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                    <span className="font-semibold text-lg">{isPositive ? "+" : ""}{token.change24h.toFixed(2)}%</span>
-                  </div>
+                  {token.marketMetricsReady ? (
+                    <div className={`flex items-center gap-1 ${isPositive ? "text-success" : "text-destructive"}`}>
+                      {isPositive ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                      <span className="font-semibold text-lg">{isPositive ? "+" : ""}{token.change24h.toFixed(2)}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">指标同步中</span>
+                  )}
                 </div>
               </div>
               
@@ -251,7 +254,7 @@ const TokenDetail = () => {
 
           {/* Right - Advanced Trading Panel */}
           <div className="lg:col-span-3 space-y-4">
-            <AdvancedTradingPanel tokenSymbol={token.symbol} tokenPrice={Number(token.currentPrice.replace(/[^0-9.]/g, "")) || 0.004123} />
+            <AdvancedTradingPanel tokenSymbol={token.symbol} tokenPrice={Number(token.currentPrice.replace(/[^0-9.]/g, "")) || 0} />
             <OrderBook symbol={token.symbol} />
           </div>
         </div>

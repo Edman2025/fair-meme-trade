@@ -14,11 +14,16 @@ const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
 await page.addInitScript(({ address }) => {
   const requests = [];
   const txHash = "0x" + "1".repeat(64);
+  let connected = false;
   window.__fairMemeWalletRequests = requests;
   window.ethereum = {
     request: async ({ method, params }) => {
       requests.push({ method, params });
-      if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
+      if (method === "eth_requestAccounts") {
+        connected = true;
+        return [address];
+      }
+      if (method === "eth_accounts") return connected ? [address] : [];
       if (method === "eth_chainId") return "0x61";
       if (method === "personal_sign") return "0x" + "2".repeat(130);
       if (method === "eth_sendTransaction") return txHash;
