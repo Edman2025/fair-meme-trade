@@ -43,8 +43,9 @@ try {
     }
   });
 
-  const response = await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
+  const response = await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 45_000 });
   assert(response?.ok(), `/ expected 2xx, got ${response?.status()}`);
+  await page.getByText("MemeLaunch", { exact: false }).first().waitFor({ timeout: 20_000 });
 
   const connectButton = page.getByRole("button", { name: /connect|连接/i }).first();
   await connectButton.waitFor({ timeout: 10_000 });

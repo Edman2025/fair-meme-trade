@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, type ChangeEvent } from "react";
+import { useEffect, useState, useMemo, useRef, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -39,6 +39,7 @@ import { apiRequest } from "@/lib/backendApi";
 
 const TOTAL_SUPPLY = 1_000_000_000;
 const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MIN_INITIAL_LP_USD = 10;
 
 const normalizeOptionalUrl = (value: unknown) => {
   const raw = String(value ?? "").trim();
@@ -57,6 +58,11 @@ const isValidHttpUrl = (value: string) => {
   }
 };
 
+const positiveNumberString = (message: string) => z.string().refine((value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0;
+}, message);
+
 const formSchema = z.object({
   // A. 基本信息
   name: z.string().min(2, "代币名称至少2个字符"),
@@ -68,12 +74,12 @@ const formSchema = z.object({
   description: z.string().min(10, "项目描述至少10个字符"),
 
   // a. 初始市值与LP份额
-  initialMarketCap: z.string().min(1, "请输入初始总市值"),
-  totalLpShares: z.string().min(1, "请输入LP总份额"),
+  initialMarketCap: positiveNumberString("请输入大于 0 的初始总市值"),
+  totalLpShares: positiveNumberString("请输入大于 0 的 LP 总份额"),
 
   // b. 初始流动性设置
   lpCurrency: z.enum(["USDT", "BNB"]),
-  teamLpShares: z.string().min(1, "请输入项目方LP份额"),
+  teamLpShares: positiveNumberString("创建代币必须添加项目方 LP 份额"),
   lpStartTime: z.date({ required_error: "请选择开始时间" }),
   lpEndTime: z.date({ required_error: "请选择结束时间" }),
   lpReleaseType: z.enum(["oneTime", "linear"]),
@@ -152,6 +158,8 @@ const Create = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [logoFileName, setLogoFileName] = useState("");
+  const [bnbUsdPrice, setBnbUsdPrice] = useState<number | null>(null);
+  const [bnbUsdPriceError, setBnbUsdPriceError] = useState("");
   const [marketingAddresses, setMarketingAddresses] = useState<{ address: string; percentage: string }[]>([]);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -196,6 +204,35 @@ const Create = () => {
     const t = parseFloat(teamLpShares || "0");
     return t > 0 && perSharePrice > 0 ? t * perSharePrice : 0;
   }, [teamLpShares, perSharePrice]);
+
+  const teamLpUsdValue = useMemo(() => {
+    if (lpCurrency === "USDT") return teamLpValue;
+    if (!bnbUsdPrice) return 0;
+    return teamLpValue * bnbUsdPrice;
+  }, [bnbUsdPrice, lpCurrency, teamLpValue]);
+
+  const lpValueIsReady = lpCurrency === "USDT" || Boolean(bnbUsdPrice);
+  const lpValueBelowMinimum = lpValueIsReady && teamLpValue > 0 && teamLpUsdValue < MIN_INITIAL_LP_USD;
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ price: number }>("/api/market/bnb-usd")
+      .then((data) => {
+        if (!cancelled) {
+          setBnbUsdPrice(Number(data.price));
+          setBnbUsdPriceError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setBnbUsdPrice(null);
+          setBnbUsdPriceError(error instanceof Error ? error.message : "BNB 价格读取失败");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const calculatedLaunchTime = lpEndTime ? new Date(lpEndTime.getTime() + 10 * 60 * 1000) : null;
 
@@ -262,6 +299,25 @@ const Create = () => {
   };
 
   const onSubmit = async (values: FormValues) => {
+    const liquidityUsdValue = values.lpCurrency === "USDT" ? teamLpValue : bnbUsdPrice ? teamLpValue * bnbUsdPrice : 0;
+    if (values.lpCurrency === "BNB" && !bnbUsdPrice) {
+      form.setError("teamLpShares", { message: "无法读取 BNB/USDT 价格，暂不能校验 10U 最低流动性" });
+      toast({
+        title: "无法校验 LP 价值",
+        description: bnbUsdPriceError || "请稍后重试，或先选择 USDT 作为 LP 价值币。",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!Number.isFinite(liquidityUsdValue) || liquidityUsdValue < MIN_INITIAL_LP_USD) {
+      form.setError("teamLpShares", { message: `创建代币必须添加不少于 ${MIN_INITIAL_LP_USD}U 的初始流动性` });
+      toast({
+        title: "初始流动性不足",
+        description: `当前项目方 LP 价值约 ${liquidityUsdValue.toFixed(2)}U，最低需要 ${MIN_INITIAL_LP_USD}U。`,
+        variant: "destructive",
+      });
+      return;
+    }
     if (!isConnected) {
       try {
         const signature = await connectInjectedWallet();
@@ -293,6 +349,13 @@ const Create = () => {
             twitter: values.twitter,
             telegram: values.telegram,
             hasMarketing: values.hasMarketing,
+            initialLiquidity: {
+              shares: values.teamLpShares,
+              value: teamLpValue,
+              currency: values.lpCurrency,
+              valueUsd: liquidityUsdValue,
+              minimumUsd: MIN_INITIAL_LP_USD,
+            },
           }),
           lpDeadline: values.lpEndTime,
         });
@@ -377,7 +440,7 @@ const Create = () => {
             </div>
           </div>
           <p className="text-muted-foreground text-sm">
-            代币初始发行总量固定 <span className="text-foreground font-semibold">1,000,000,000</span> 枚 · LP 锁仓 30 天 · LP 分红 0.3% · 开盘自动 = LP 结束后 10 分钟
+            代币初始发行总量固定 <span className="text-foreground font-semibold">1,000,000,000</span> 枚 · 创建时必须添加不少于 <span className="text-foreground font-semibold">10U</span> 初始流动性 · LP 锁仓 30 天 · LP 分红 0.3%
           </p>
         </div>
 
@@ -469,7 +532,7 @@ const Create = () => {
 
                 <div className="flex items-center gap-2 p-3 bg-muted rounded-md text-sm">
                   <Info className="h-4 w-4 text-primary" />
-                  <span>代币初始发行总量：<span className="font-semibold text-foreground">1,000,000,000</span> 枚（固定）</span>
+                  <span>代币初始发行总量：<span className="font-semibold text-foreground">1,000,000,000</span> 枚（固定）；项目方初始 LP 折算价值必须 ≥ <span className="font-semibold text-foreground">10U</span></span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -527,10 +590,28 @@ const Create = () => {
                       所需总金额：<span className="font-semibold text-primary">
                         {teamLpValue > 0 ? `${teamLpValue.toFixed(4)} ${lpCurrency}` : "—"}
                       </span>
+                      <span className={cn("ml-2", lpValueBelowMinimum ? "text-destructive font-semibold" : "text-muted-foreground")}>
+                        {teamLpValue > 0
+                          ? `约 ${teamLpUsdValue.toFixed(2)}U / 最低 ${MIN_INITIAL_LP_USD}U`
+                          : `最低 ${MIN_INITIAL_LP_USD}U`}
+                      </span>
+                      {lpCurrency === "BNB" && (
+                        <span className="ml-2 text-muted-foreground">
+                          {bnbUsdPrice ? `BNB≈${bnbUsdPrice.toFixed(2)}U` : bnbUsdPriceError ? "BNB 价格读取失败" : "BNB 价格读取中"}
+                        </span>
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />
+
+                {lpValueBelowMinimum && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      当前项目方初始 LP 价值约 {teamLpUsdValue.toFixed(2)}U，低于最低要求 {MIN_INITIAL_LP_USD}U。请提高项目方 LP 份额或初始总市值后再创建。
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField control={form.control} name="lpStartTime" render={({ field }) => (

@@ -15,6 +15,8 @@ import { getMarketSeries, getOrderBook, getTokenCreationBlock, getTokenMetrics, 
 
 const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), "server/uploads");
 const maxUploadBytes = 5 * 1024 * 1024;
+const conservativeBnbUsdFallback = Number(process.env.BNB_USD_CONSERVATIVE_FALLBACK || 300);
+let bnbUsdCache: { price: number; updatedAt: number } | null = null;
 const allowedUploadTypes = new Map([
   ["image/png", "png"],
   ["image/jpeg", "jpg"],
@@ -33,8 +35,65 @@ const sendRouteError = (reply: FastifyReply, error: unknown, fallback: string) =
   return reply.code(500).send({ error: message });
 };
 
+const readBnbUsdPrice = async () => {
+  const sources: Array<{ name: string; url: string; parse: (body: unknown) => number }> = [
+    {
+      name: "binance",
+      url: "https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT",
+      parse: (body) => Number((body as { price?: string }).price),
+    },
+    {
+      name: "binance_us",
+      url: "https://api.binance.us/api/v3/ticker/price?symbol=BNBUSDT",
+      parse: (body) => Number((body as { price?: string }).price),
+    },
+    {
+      name: "coingecko",
+      url: "https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd",
+      parse: (body) => Number((body as { binancecoin?: { usd?: number } }).binancecoin?.usd),
+    },
+  ];
+  const errors: string[] = [];
+  for (const source of sources) {
+    try {
+      const response = await fetch(source.url);
+      if (!response.ok) throw new Error(`${response.status}`);
+      const body = await response.json();
+      const price = source.parse(body);
+      if (!Number.isFinite(price) || price <= 0) throw new Error("invalid price");
+      return { price, source: source.name };
+    } catch (error) {
+      errors.push(`${source.name}: ${error instanceof Error ? error.message : "failed"}`);
+    }
+  }
+  throw new Error(`BNB price unavailable (${errors.join("; ")})`);
+};
+
 export const registerCoreRoutes = async (app: FastifyInstance) => {
   app.get("/api/health", async () => ({ ok: true, service: "fair-meme-trade-api" }));
+
+  app.get("/api/market/bnb-usd", async (request, reply) => {
+    const now = Date.now();
+    if (bnbUsdCache && now - bnbUsdCache.updatedAt < 60_000) {
+      return { symbol: "BNBUSDT", price: bnbUsdCache.price, source: "binance_cache", updatedAt: new Date(bnbUsdCache.updatedAt).toISOString() };
+    }
+    try {
+      const { price, source } = await readBnbUsdPrice();
+      bnbUsdCache = { price, updatedAt: now };
+      return { symbol: "BNBUSDT", price, source, updatedAt: new Date(now).toISOString() };
+    } catch (error) {
+      if (bnbUsdCache) {
+        return { symbol: "BNBUSDT", price: bnbUsdCache.price, source: "binance_cache_stale", updatedAt: new Date(bnbUsdCache.updatedAt).toISOString() };
+      }
+      app.log.warn({ error }, "BNB price sources unavailable; using conservative fallback");
+      return {
+        symbol: "BNBUSDT",
+        price: conservativeBnbUsdFallback,
+        source: "conservative_fallback",
+        updatedAt: new Date(now).toISOString(),
+      };
+    }
+  });
 
   app.post<{ Body: { fileName?: string; mimeType?: string; data?: string } }>("/api/uploads", async (request, reply) => {
     const mimeType = request.body.mimeType || "";

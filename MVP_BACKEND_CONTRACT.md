@@ -18,6 +18,7 @@ Production state is sourced from the Fastify API, Postgres, the long-running ind
 - `GET /api/tokens/:symbol/market-series?timeframe=1m`
 - `GET /api/tokens/:symbol/order-book`
 - `GET /api/tokens/:symbol/holders?limit=10`
+- `GET /api/market/bnb-usd`
 - `POST /api/chain-transactions`
 - `GET /api/chain-transactions`
 - `GET /api/indexed-events`

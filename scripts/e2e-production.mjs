@@ -36,9 +36,10 @@ const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
 
 try {
   for (const { path, text } of requiredPages) {
-    const response = await page.goto(`${baseUrl}${path}`, { waitUntil: "networkidle" });
+    const response = await page.goto(`${baseUrl}${path}`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     assert(response?.ok(), `${path} expected 2xx, got ${response?.status()}`);
     await page.locator("body").waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByText(text, { exact: false }).first().waitFor({ timeout: 20_000 });
     const body = await page.locator("body").innerText();
     assert(body.includes(text), `${path} missing expected text: ${text}`);
     for (const forbidden of forbiddenText) {
@@ -47,7 +48,7 @@ try {
     console.log(`${path} browser ok`);
   }
 
-  await page.goto(`${baseUrl}/api-docs`, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/api-docs`, { waitUntil: "domcontentloaded", timeout: 45_000 });
   await page.getByRole("button", { name: /EN|zh-CN|繁体|日本語/ }).click();
   await page.getByRole("menuitem", { name: "简体中文" }).click();
   await page.getByRole("tab", { name: "接口文档" }).click();
