@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -35,15 +35,34 @@ import Footer from "@/components/Footer";
 import { useMvp } from "@/contexts/MvpContext";
 import { createTokenOnChain } from "@/lib/chainWrite";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import { apiRequest } from "@/lib/backendApi";
 
 const TOTAL_SUPPLY = 1_000_000_000;
+const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+const normalizeOptionalUrl = (value: unknown) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+};
+
+const isValidHttpUrl = (value: string) => {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const formSchema = z.object({
   // A. 基本信息
   name: z.string().min(2, "代币名称至少2个字符"),
   symbol: z.string().min(2, "代币符号至少2个字符").max(10),
-  logo: z.string().optional(),
-  website: z.string().url("请输入有效网址").optional().or(z.literal("")),
+  logo: z.preprocess(normalizeOptionalUrl, z.string().refine(isValidHttpUrl, "请输入有效网址")),
+  website: z.preprocess(normalizeOptionalUrl, z.string().refine(isValidHttpUrl, "请输入有效网址")),
   twitter: z.string().optional(),
   telegram: z.string().optional(),
   description: z.string().min(10, "项目描述至少10个字符"),
@@ -131,7 +150,10 @@ const Create = () => {
   const navigate = useNavigate();
   const { createToken, isConnected, connectWallet, connectInjectedWallet } = useMvp();
   const [isCreating, setIsCreating] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoFileName, setLogoFileName] = useState("");
   const [marketingAddresses, setMarketingAddresses] = useState<{ address: string; percentage: string }[]>([]);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -161,6 +183,7 @@ const Create = () => {
   const totalLpShares = form.watch("totalLpShares");
   const teamLpShares = form.watch("teamLpShares");
   const lpCurrency = form.watch("lpCurrency");
+  const logoValue = form.watch("logo");
 
   const perSharePrice = useMemo(() => {
     const cap = parseFloat(initialMarketCap || "0");
@@ -183,6 +206,59 @@ const Create = () => {
   };
   const removeMarketingAddress = (index: number) => {
     setMarketingAddresses(marketingAddresses.filter((_, i) => i !== index));
+  };
+
+  const handleWebsiteBlur = () => {
+    const normalized = normalizeOptionalUrl(form.getValues("website"));
+    form.setValue("website", normalized, { shouldDirty: true, shouldValidate: true });
+  };
+
+  const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+
+  const handleLogoFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      toast({ title: "文件类型不支持", description: "请上传图片、GIF 或视频文件。", variant: "destructive" });
+      return;
+    }
+    if (file.size > MAX_LOGO_UPLOAD_BYTES) {
+      toast({ title: "文件过大", description: "LOGO 文件最大支持 5MB。", variant: "destructive" });
+      return;
+    }
+    setIsUploadingLogo(true);
+    setLogoFileName(file.name);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const uploaded = await apiRequest<{ url: string; fileName: string; size: number }>("/api/uploads", {
+        method: "POST",
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type,
+          data: dataUrl,
+        }),
+      });
+      form.setValue("logo", uploaded.url, { shouldDirty: true, shouldValidate: true });
+      toast({
+        title: "LOGO 已上传",
+        description: `${uploaded.fileName} 已保存，创建时会写入项目 metadata。`,
+      });
+    } catch (error) {
+      setLogoFileName("");
+      toast({
+        title: "LOGO 上传失败",
+        description: error instanceof Error ? error.message : "请稍后重试，或直接输入图片 URL。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -212,6 +288,7 @@ const Create = () => {
           totalSupply: String(TOTAL_SUPPLY),
           metadataURI: JSON.stringify({
             description: values.description,
+            logo: values.logo,
             website: values.website,
             twitter: values.twitter,
             telegram: values.telegram,
@@ -332,9 +409,33 @@ const Create = () => {
                   <FormItem>
                     <FormLabel>代币 LOGO（支持图片 / 动图 / 视频）</FormLabel>
                     <FormControl>
-                      <div className="flex gap-2">
-                        <Input placeholder="上传或输入 URL" {...field} />
-                        <Button type="button" variant="outline" size="icon"><Upload className="h-4 w-4" /></Button>
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input placeholder="上传或输入 URL" {...field} />
+                          <input
+                            ref={logoInputRef}
+                            type="file"
+                            accept="image/*,video/mp4,video/webm"
+                            className="sr-only"
+                            onChange={handleLogoFileSelected}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="上传代币 LOGO"
+                            disabled={isUploadingLogo}
+                            onClick={() => logoInputRef.current?.click()}
+                          >
+                            {isUploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        {(logoFileName || logoValue) && (
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                            {logoFileName && <span>已选择：{logoFileName}</span>}
+                            {logoValue && <span className="break-all">当前地址：{logoValue}</span>}
+                          </div>
+                        )}
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -343,7 +444,7 @@ const Create = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField control={form.control} name="website" render={({ field }) => (
-                    <FormItem><FormLabel>官方网站</FormLabel><FormControl><Input placeholder="https://..." {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>官方网站</FormLabel><FormControl><Input placeholder="https://..." {...field} onBlur={() => { field.onBlur(); handleWebsiteBlur(); }} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="twitter" render={({ field }) => (
                     <FormItem><FormLabel>推特链接</FormLabel><FormControl><Input placeholder="@username" {...field} /></FormControl><FormMessage /></FormItem>

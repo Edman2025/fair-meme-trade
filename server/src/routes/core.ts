@@ -1,4 +1,7 @@
 import { FastifyInstance, FastifyReply } from "fastify";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { and, desc, eq } from "drizzle-orm";
 import { parseUnits } from "ethers";
 import { db } from "../db/client";
@@ -10,6 +13,18 @@ import { env } from "../env";
 import { getHolderAnalytics } from "../lib/holderAnalytics";
 import { getMarketSeries, getOrderBook, getTokenCreationBlock, getTokenMetrics, presentTokenMetrics } from "../lib/marketData";
 
+const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), "server/uploads");
+const maxUploadBytes = 5 * 1024 * 1024;
+const allowedUploadTypes = new Map([
+  ["image/png", "png"],
+  ["image/jpeg", "jpg"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+  ["image/svg+xml", "svg"],
+  ["video/mp4", "mp4"],
+  ["video/webm", "webm"],
+]);
+
 const sendRouteError = (reply: FastifyReply, error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : fallback;
   if (message.includes("Authentication required") || message.includes("Admin wallet required") || message.includes("jwt")) {
@@ -20,6 +35,48 @@ const sendRouteError = (reply: FastifyReply, error: unknown, fallback: string) =
 
 export const registerCoreRoutes = async (app: FastifyInstance) => {
   app.get("/api/health", async () => ({ ok: true, service: "fair-meme-trade-api" }));
+
+  app.post<{ Body: { fileName?: string; mimeType?: string; data?: string } }>("/api/uploads", async (request, reply) => {
+    const mimeType = request.body.mimeType || "";
+    const extension = allowedUploadTypes.get(mimeType);
+    if (!extension) return reply.code(400).send({ error: "Unsupported file type" });
+    const base64 = (request.body.data || "").replace(/^data:[^;]+;base64,/, "");
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(base64, "base64");
+    } catch {
+      return reply.code(400).send({ error: "Invalid upload data" });
+    }
+    if (!buffer.length) return reply.code(400).send({ error: "Empty upload" });
+    if (buffer.length > maxUploadBytes) return reply.code(413).send({ error: "File is larger than 5MB" });
+
+    const digest = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+    const id = `${Date.now()}-${digest}-${randomUUID().slice(0, 8)}.${extension}`;
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(path.join(uploadDir, id), buffer);
+    const proto = String(request.headers["x-forwarded-proto"] || request.protocol || "https").split(",")[0];
+    const host = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0];
+    const publicPath = `/api/uploads/${id}`;
+    return {
+      url: host ? `${proto}://${host}${publicPath}` : publicPath,
+      path: publicPath,
+      fileName: request.body.fileName || id,
+      mimeType,
+      size: buffer.length,
+    };
+  });
+
+  app.get<{ Params: { file: string } }>("/api/uploads/:file", async (request, reply) => {
+    const safeFile = path.basename(request.params.file);
+    const extension = safeFile.split(".").pop() || "";
+    const mimeType = [...allowedUploadTypes.entries()].find(([, ext]) => ext === extension)?.[0] || "application/octet-stream";
+    try {
+      const buffer = await readFile(path.join(uploadDir, safeFile));
+      return reply.header("Content-Type", mimeType).header("Cache-Control", "public, max-age=31536000, immutable").send(buffer);
+    } catch {
+      return reply.code(404).send({ error: "Upload not found" });
+    }
+  });
 
   app.get("/api/tokens", async (request, reply) => {
     if (isApiKeyRequest(request)) {

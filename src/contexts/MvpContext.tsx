@@ -365,27 +365,46 @@ type ServerNodeApplication = {
   createdAt: string;
 };
 
-const tokenFromServer = (token: ServerToken): Token => ({
-  logo: token.symbol.slice(0, 2).toUpperCase(),
-  name: token.name,
-  symbol: token.symbol.toUpperCase(),
-  totalSupply: "等待同步",
-  lpCount: 0,
-  holders: 0,
-  change24h: 0,
-  currentPrice: "等待同步",
-  marketCap: "等待同步",
-  volume24h: "等待同步",
-  poolAmount: "等待同步",
-  description: token.metadataUri,
-  contractAddress: token.tokenAddress,
-  creatorWallet: token.creatorAddress,
-  lpPairToken: isNativePairToken(token.pairToken) ? "BNB" : "USDT",
-  status: token.status,
-  category: "meme",
-  isFollowing: true,
-  marketMetricsReady: false,
-});
+const parseTokenMetadata = (metadataUri?: string) => {
+  if (!metadataUri) return {};
+  try {
+    const parsed = JSON.parse(metadataUri);
+    if (parsed && typeof parsed === "object") {
+      return parsed as { description?: string; logo?: string; website?: string; twitter?: string; telegram?: string };
+    }
+  } catch {
+    return { description: metadataUri };
+  }
+  return {};
+};
+
+const tokenFromServer = (token: ServerToken): Token => {
+  const metadata = parseTokenMetadata(token.metadataUri);
+  return {
+    logo: metadata.logo || token.symbol.slice(0, 2).toUpperCase(),
+    name: token.name,
+    symbol: token.symbol.toUpperCase(),
+    totalSupply: "等待同步",
+    lpCount: 0,
+    holders: 0,
+    change24h: 0,
+    currentPrice: "等待同步",
+    marketCap: "等待同步",
+    volume24h: "等待同步",
+    poolAmount: "等待同步",
+    description: metadata.description || token.metadataUri,
+    contractAddress: token.tokenAddress,
+    creatorWallet: token.creatorAddress,
+    lpPairToken: isNativePairToken(token.pairToken) ? "BNB" : "USDT",
+    website: metadata.website,
+    twitter: metadata.twitter,
+    telegram: metadata.telegram,
+    status: token.status,
+    category: "meme",
+    isFollowing: true,
+    marketMetricsReady: false,
+  };
+};
 
 const applyTokenMetrics = (token: Token, metrics?: ServerTokenMetrics): Token => {
   if (!metrics) return token;

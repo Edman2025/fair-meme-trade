@@ -12,6 +12,7 @@ dist
 dist-ssr
 artifacts
 cache
+server/uploads
 *.local
 
 # Editor directories and files

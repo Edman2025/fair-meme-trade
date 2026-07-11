@@ -24,6 +24,7 @@ import AdvancedTradingPanel from "@/components/AdvancedTradingPanel";
 import ChartToolbar from "@/components/ChartToolbar";
 import ChartBottomTabs from "@/components/ChartBottomTabs";
 import OrderBook from "@/components/OrderBook";
+import TokenLogo from "@/components/TokenLogo";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useMvp } from "@/contexts/MvpContext";
 import { getExplorerAddressUrl } from "@/lib/chainConfig";
@@ -103,9 +104,7 @@ const TokenDetail = () => {
         <div className="mb-4">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
-              <div className="h-16 w-16 rounded-full bg-gradient-primary flex items-center justify-center text-4xl font-bold">
-                {token.logo}
-              </div>
+              <TokenLogo value={token.logo} symbol={token.symbol} className="h-16 w-16 text-4xl" />
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <h1 className="text-3xl font-bold">{token.symbol}/{token.lpPairToken}</h1>

@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Users, Droplet, Globe, Twitter, Send } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useNavigate } from "react-router-dom";
+import TokenLogo from "@/components/TokenLogo";
 
 interface TokenCardProps {
   logo: string;
@@ -71,9 +72,7 @@ const TokenCard = ({
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center text-2xl font-bold">
-              {logo}
-            </div>
+            <TokenLogo value={logo} symbol={symbol} className="h-12 w-12 text-2xl" />
             <div>
               <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-smooth">
                 {name}

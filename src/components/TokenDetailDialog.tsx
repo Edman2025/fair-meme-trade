@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import TokenChart from "./TokenChart";
 import AdvancedTradingPanel from "./AdvancedTradingPanel";
 import OrderBook from "./OrderBook";
+import TokenLogo from "@/components/TokenLogo";
 import { getExplorerAddressUrl } from "@/lib/chainConfig";
 import { apiRequest } from "@/lib/backendApi";
 
@@ -103,9 +104,7 @@ const TokenDetailDialog = ({ open, onOpenChange, token }: TokenDetailDialogProps
         <DialogHeader>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-gradient-primary flex items-center justify-center text-4xl font-bold">
-                {token.logo}
-              </div>
+              <TokenLogo value={token.logo} symbol={token.symbol} className="h-16 w-16 text-4xl" />
               <div>
                 <DialogTitle className="text-2xl mb-1">{token.name}</DialogTitle>
                 <div className="flex items-center gap-3">
