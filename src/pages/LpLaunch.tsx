@@ -281,7 +281,7 @@ const LpLaunch = () => {
           <Card className="p-8 text-center">
             <h1 className="text-2xl font-bold mb-3">项目未找到</h1>
             <p className="text-muted-foreground mb-6">
-              {requestedSymbol} 尚未被后端或 indexer 同步，请稍后刷新，或返回市场选择已存在项目。
+              {requestedSymbol} 正在确认链上交易，页面会在同步完成后自动更新，通常只需几秒。
             </p>
             <Button onClick={() => navigate("/")}>返回市场</Button>
           </Card>

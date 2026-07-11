@@ -50,7 +50,7 @@ const TokenDetail = () => {
           <div className="rounded border border-dashed border-border p-8 text-center">
             <h1 className="text-2xl font-bold mb-3">项目未找到</h1>
             <p className="text-muted-foreground mb-6">
-              {(symbol || "").toUpperCase()} 尚未被后端或 indexer 同步，请稍后刷新。
+              {(symbol || "").toUpperCase()} 正在确认链上交易，页面会在同步完成后自动更新，通常只需几秒。
             </p>
             <Button onClick={() => navigate("/")}>返回市场</Button>
           </div>

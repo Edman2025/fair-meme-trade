@@ -749,6 +749,60 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
   }, [authToken]);
 
   useEffect(() => {
+    if (enableDemoFallback) return;
+    let cancelled = false;
+    let requestInFlight = false;
+
+    const refreshTokens = async () => {
+      if (requestInFlight || document.visibilityState === "hidden") return;
+      requestInFlight = true;
+      try {
+        const serverTokens = await apiRequest<ServerToken[]>("/api/tokens");
+        if (cancelled) return;
+        const incoming = serverTokens.map(tokenFromServer);
+        setTokens((current) => {
+          const currentBySymbol = new Map(current.map((token) => [token.symbol, token]));
+          return incoming.map((token) => {
+            const existing = currentBySymbol.get(token.symbol);
+            if (!existing) return token;
+            const merged = { ...existing, ...token };
+            if (!existing.marketMetricsReady) return merged;
+            return {
+              ...merged,
+              totalSupply: existing.totalSupply,
+              lpCount: existing.lpCount,
+              holders: existing.holders,
+              change24h: existing.change24h,
+              currentPrice: existing.currentPrice,
+              marketCap: existing.marketCap,
+              volume24h: existing.volume24h,
+              poolAmount: existing.poolAmount,
+              pairAddress: existing.pairAddress,
+              marketMetricsReady: true,
+            };
+          });
+        });
+      } catch {
+        // Keep the last confirmed server state during transient API failures.
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    const timer = window.setInterval(refreshTokens, 2_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshTokens();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void refreshTokens();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const loadAccountState = async () => {
       if (!currentWalletAddress || currentWalletAddress === DEMO_WALLET_ADDRESS) return;

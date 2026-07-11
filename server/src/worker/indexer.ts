@@ -413,7 +413,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       } catch (error) {
         console.error("indexer loop failed", error);
       }
-      setTimeout(loop, 8000);
+      setTimeout(loop, 2000);
     };
     await loop();
   }

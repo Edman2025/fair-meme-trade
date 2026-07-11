@@ -413,7 +413,7 @@ const Create = () => {
       }
       toast({
         title: tx ? "链上创建交易已提交，项目将自动上线" : "开发演示代币已自动上线",
-        description: tx ? `${values.name} (${values.symbol}) tx: ${tx.txHash.slice(0, 10)}...，indexer 同步后会直接显示为已上线。` : `${values.name} (${values.symbol}) 已进入已上线列表。`,
+        description: tx ? `${values.name} (${values.symbol}) tx: ${tx.txHash.slice(0, 10)}...，确认后页面会自动更新。` : `${values.name} (${values.symbol}) 已进入已上线列表。`,
       });
       setIsCreating(false);
       navigate(`/lp-launch/${values.symbol.toUpperCase()}`);
