@@ -5,9 +5,10 @@ interface CountdownTimerProps {
   targetDate: string;
   label: string;
   className?: string;
+  pendingText?: string;
 }
 
-export const CountdownTimer = ({ targetDate, label, className = "" }: CountdownTimerProps) => {
+export const CountdownTimer = ({ targetDate, label, className = "", pendingText = "等待同步" }: CountdownTimerProps) => {
   const { days, hours, minutes, seconds, isExpired } = useCountdown(targetDate);
   const hasValidTarget = Number.isFinite(new Date(targetDate).getTime());
   
@@ -25,7 +26,7 @@ export const CountdownTimer = ({ targetDate, label, className = "" }: CountdownT
     return (
       <div className={`flex items-center gap-2 rounded border border-dashed border-border p-4 ${className}`}>
         <Clock className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">{label}：等待同步</span>
+        <span className="text-sm text-muted-foreground">{label}：{pendingText}</span>
       </div>
     );
   }

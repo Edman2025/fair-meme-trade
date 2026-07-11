@@ -39,6 +39,12 @@ const parseLpAmount = (value?: string) => {
   return match?.[0] || "0";
 };
 
+const formatChainDate = (value?: string) => {
+  if (!value) return "尚未锁仓";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "尚未锁仓";
+};
+
 const LpLaunch = () => {
   const { symbol } = useParams();
   const navigate = useNavigate();
@@ -93,12 +99,13 @@ const LpLaunch = () => {
     expectedWithdraw: userPosition?.expectedWithdraw || "0",
     withdrawnAmount: userPosition?.withdrawnAmount || "0",
     roi: userPosition?.roi || 0,
-    lockEndDate: userPosition?.lockEndDate || "—",
+    lockEndDate: userPosition?.lockEndDate || "",
     linearReleaseEndDate: userPosition?.linearReleaseEndDate || "",
     totalParticipants: tokenPositions.length,
     recentActivities,
   } : null;
   const claimProgress = data?.totalSlots ? (data.claimedSlots / data.totalSlots) * 100 : 0;
+  const lockEndDateLabel = formatChainDate(data?.lockEndDate);
   const hasUserLp = data ? parseFloat(data.userLpAmount.replace(/,/g, "")) > 0 : false;
 
   const handleCopy = (text: string) => {
@@ -413,6 +420,7 @@ const LpLaunch = () => {
             <CountdownTimer 
               targetDate={data.lockEndDate}
               label="距离锁仓到期"
+              pendingText="尚未锁仓"
             />
           </div>
 
@@ -440,7 +448,7 @@ const LpLaunch = () => {
               <Calendar className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-xs text-muted-foreground">锁仓到期日</p>
-                <p className="font-semibold">{data.lockEndDate}</p>
+                <p className="font-semibold">{lockEndDateLabel}</p>
               </div>
             </div>
           </div>
@@ -624,7 +632,7 @@ const LpLaunch = () => {
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">锁仓截止日期</p>
-                <p className="text-sm font-semibold">{data.lockEndDate}</p>
+                <p className="text-sm font-semibold">{lockEndDateLabel}</p>
               </div>
               {data.releaseType === "linear" && (
                 <div className="space-y-1">

@@ -477,7 +477,7 @@ const lpPositionFromServer = (position: ServerLpPosition, tokenList: Token[]): L
     expectedWithdraw: `${Math.max(amount - withdrawn, 0).toLocaleString()} LP`,
     withdrawnAmount: `${withdrawn.toLocaleString()} LP`,
     roi: 0,
-    lockEndDate: position.unlockAt ? new Date(position.unlockAt).toISOString().slice(0, 10) : "—",
+    lockEndDate: position.unlockAt ? new Date(position.unlockAt).toISOString() : "",
     linearReleaseEndDate: position.releaseEnd ? new Date(position.releaseEnd).toISOString().slice(0, 10) : undefined,
     lpTokenAddress: position.lpTokenAddress,
     tokenAddress: position.tokenAddress,
