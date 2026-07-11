@@ -8,6 +8,7 @@ import { ArrowLeft, Copy, ExternalLink, TrendingUp, TrendingDown } from "lucide-
 import { useToast } from "@/hooks/use-toast";
 import { useMvp } from "@/contexts/MvpContext";
 import { getExplorerAddressUrl } from "@/lib/chainConfig";
+import TokenLogo from "@/components/TokenLogo";
 
 const WalletDetail = () => {
   const { address } = useParams<{ address: string }>();
@@ -111,9 +112,7 @@ const WalletDetail = () => {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center text-2xl">
-                      {holding.logo}
-                    </div>
+                    <TokenLogo value={holding.logo} symbol={holding.symbol} className="h-12 w-12 shrink-0 text-sm" />
                     <div>
                       <p className="text-xl font-bold">{holding.symbol}</p>
                       <p className="text-sm text-muted-foreground">{holding.amount} tokens</p>
@@ -147,9 +146,7 @@ const WalletDetail = () => {
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-4">
-                    <div className="h-16 w-16 rounded-full bg-gradient-primary flex items-center justify-center text-4xl">
-                      {token.logo}
-                    </div>
+                    <TokenLogo value={token.logo} symbol={token.symbol} className="h-16 w-16 shrink-0 text-xl" />
                     <div>
                       <h3 className="text-2xl font-bold mb-1">{token.name}</h3>
                       <div className="flex items-center gap-3">

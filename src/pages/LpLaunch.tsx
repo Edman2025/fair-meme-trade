@@ -17,6 +17,7 @@ import { canUseRealChain } from "@/lib/chainConfig";
 import { addLiquidityEthAndLock, releaseVaultPositionAmount, withdrawVaultPosition } from "@/lib/pancakeSwap";
 import { apiRequest } from "@/lib/backendApi";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import TokenLogo from "@/components/TokenLogo";
 import { 
   ArrowLeft, 
   Copy, 
@@ -314,9 +315,7 @@ const LpLaunch = () => {
         <Card className="p-6">
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-gradient-primary flex items-center justify-center text-3xl">
-                {data.logo}
-              </div>
+              <TokenLogo value={data.logo} symbol={data.symbol} className="h-16 w-16 shrink-0 text-xl" />
               <div>
                 <h1 className="text-2xl font-bold text-foreground">{data.name}</h1>
                 <p className="text-muted-foreground">{data.symbol}</p>

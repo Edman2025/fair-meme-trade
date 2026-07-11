@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, TrendingUp, Flame, Crown, Medal, Award } from "lucide-react";
 import { useMvp } from "@/contexts/MvpContext";
+import TokenLogo from "@/components/TokenLogo";
 
 type Period = "day" | "week" | "month" | "quarter" | "year";
 type SortMode = "marketCap" | "volume" | "holders";
@@ -198,7 +199,7 @@ const GoldenDogRanking = () => {
                     )}
                   </div>
                   <div className="col-span-11 md:col-span-3 flex items-center gap-3">
-                    <div className="text-3xl">{token.logo}</div>
+                    <TokenLogo value={token.logo} symbol={token.symbol} className="h-10 w-10 shrink-0 text-sm" />
                     <div>
                       <div className="font-bold flex items-center gap-2">
                         {token.symbol}

@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMvp } from "@/contexts/MvpContext";
 import { withdrawVaultPosition } from "@/lib/pancakeSwap";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import TokenLogo from "@/components/TokenLogo";
 import { 
   ArrowLeft,
   Copy,
@@ -111,9 +112,7 @@ const MyLp = () => {
       {/* 项目基本信息 */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-gradient-primary flex items-center justify-center text-3xl">
-            {project.logo}
-          </div>
+          <TokenLogo value={project.logo} symbol={project.symbol} className="h-16 w-16 shrink-0 text-xl" />
           <div>
             <h2 className="text-2xl font-bold text-foreground">{project.name}</h2>
             <p className="text-muted-foreground">{project.symbol}</p>
