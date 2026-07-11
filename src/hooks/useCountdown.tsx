@@ -12,6 +12,9 @@ export const useCountdown = (targetDate: string): CountdownResult => {
   const calculateTimeLeft = (): CountdownResult => {
     const target = new Date(targetDate).getTime();
     const now = new Date().getTime();
+    if (!Number.isFinite(target)) {
+      return { days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false };
+    }
     const difference = target - now;
 
     if (difference <= 0) {

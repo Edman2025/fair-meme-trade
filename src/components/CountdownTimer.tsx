@@ -9,6 +9,7 @@ interface CountdownTimerProps {
 
 export const CountdownTimer = ({ targetDate, label, className = "" }: CountdownTimerProps) => {
   const { days, hours, minutes, seconds, isExpired } = useCountdown(targetDate);
+  const hasValidTarget = Number.isFinite(new Date(targetDate).getTime());
   
   // 检查是否少于24小时（警告状态）
   const totalHours = days * 24 + hours;
@@ -19,6 +20,15 @@ export const CountdownTimer = ({ targetDate, label, className = "" }: CountdownT
   const bgClass = isWarning ? "bg-destructive/10" : "bg-primary/10";
   const borderClass = isWarning ? "border-destructive/20" : "border-primary/20";
   const animateClass = isWarning ? "animate-warning-pulse" : "animate-price-pulse";
+
+  if (!hasValidTarget) {
+    return (
+      <div className={`flex items-center gap-2 rounded border border-dashed border-border p-4 ${className}`}>
+        <Clock className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">{label}：等待同步</span>
+      </div>
+    );
+  }
 
   if (isExpired) {
     return (
