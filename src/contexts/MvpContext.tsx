@@ -2,7 +2,7 @@ import { createContext, ReactNode, useContext, useEffect, useMemo, useState } fr
 import { bscTestnetConfig, canUseRealChain, isNativePairToken } from "@/lib/chainConfig";
 import { buildFactoryCalldata } from "@/lib/contractAbi";
 import { requestCommissionVaultWithdrawal } from "@/lib/commissionVault";
-import { apiRequest, clearStoredAuthToken, getStoredAuthToken, requestAuthNonce, storeAuthToken, verifyAuthSignature } from "@/lib/backendApi";
+import { apiRequest, clearStoredAuthToken, getAuthMe, getStoredAuthToken, requestAuthNonce, storeAuthToken, verifyAuthSignature } from "@/lib/backendApi";
 import { ensureWalletChain, getConnectedAccounts, hasInjectedWallet, onWalletAccountsChanged, personalSign, requestAccounts, sendValueTransaction, signLoginMessage } from "@/lib/walletAdapter";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
 
@@ -184,6 +184,7 @@ interface MvpContextType {
   chainTransactions: ChainTransaction[];
   indexedEvents: IndexedEvent[];
   adminQueue: AdminReviewItem[];
+  isAdminSession: boolean;
   connectWallet: () => void;
   connectInjectedWallet: () => Promise<WalletSignatureRecord>;
   disconnectWallet: () => void;
@@ -509,6 +510,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
   const [indexedEvents, setIndexedEvents] = useState<IndexedEvent[]>(localState?.indexedEvents || (enableDemoFallback ? initialIndexedEvents : []));
   const [adminQueue, setAdminQueue] = useState<AdminReviewItem[]>(localState?.adminQueue || (enableDemoFallback ? initialAdminQueue : []));
   const [authToken, setAuthToken] = useState(getStoredAuthToken());
+  const [isAdminSession, setIsAdminSession] = useState(false);
   const [marketSeriesBySymbol, setMarketSeriesBySymbol] = useState<Record<string, MarketCandle[]>>({});
   const [orderBookBySymbol, setOrderBookBySymbol] = useState<Record<string, OrderBookSnapshot>>({});
 
@@ -559,6 +561,32 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
   }, [currentWalletAddress, isConnected]);
 
   useEffect(() => {
+    if (!authToken) {
+      setIsAdminSession(false);
+      return;
+    }
+    let cancelled = false;
+    getAuthMe(authToken)
+      .then((user) => {
+        if (cancelled) return;
+        setIsAdminSession(Boolean(user.isAdmin));
+        if (user.address && user.address !== currentWalletAddress) {
+          setCurrentWalletAddress(user.address);
+          setIsConnected(true);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsAdminSession(false);
+        clearStoredAuthToken();
+        setAuthToken("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, currentWalletAddress]);
+
+  useEffect(() => {
     if (enableDemoFallback || !hasInjectedWallet()) return;
     let cancelled = false;
 
@@ -569,6 +597,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       if (!account) {
         setIsConnected(false);
         setCurrentWalletAddress("");
+        setIsAdminSession(false);
         return;
       }
       setCurrentWalletAddress(account);
@@ -579,6 +608,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       if (!cancelled) {
         setIsConnected(false);
         setCurrentWalletAddress("");
+        setIsAdminSession(false);
       }
     });
 
@@ -587,6 +617,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       if (!account) {
         setIsConnected(false);
         setCurrentWalletAddress("");
+        setIsAdminSession(false);
         clearStoredAuthToken();
         setAuthToken("");
         return;
@@ -778,6 +809,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     chainTransactions,
     indexedEvents,
     adminQueue,
+    isAdminSession,
     connectWallet: () => {
       if (!enableDemoFallback) {
         throw new Error("未检测到真实钱包，线上环境不启用演示钱包。");
@@ -817,9 +849,11 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         const verified = await verifyAuthSignature(nonce.sessionId, serverSignature);
         storeAuthToken(verified.token);
         setAuthToken(verified.token);
+        setIsAdminSession(Boolean(verified.isAdmin));
       } catch {
         clearStoredAuthToken();
         setAuthToken("");
+        setIsAdminSession(false);
       }
       setCurrentWalletAddress(signature.address);
       setIsConnected(true);
@@ -837,6 +871,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       }
       clearStoredAuthToken();
       setAuthToken("");
+      setIsAdminSession(false);
     },
     getTokenBySymbol: (symbol) => {
       const normalized = (symbol || "ROCKET").toUpperCase();
@@ -1224,6 +1259,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     currentWalletAddress,
     indexedEvents,
     isConnected,
+    isAdminSession,
     lpPositions,
     marketSeriesBySymbol,
     nodeApplications,

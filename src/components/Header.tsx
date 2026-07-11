@@ -67,6 +67,7 @@ const Header = () => {
     walletSignatures,
     chainTransactions,
     indexedEvents,
+    isAdminSession,
   } = useMvp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -228,7 +229,7 @@ const Header = () => {
     { key: "node", path: "/nodes" },
     { key: "goldenDogRanking", path: "/golden-dog-ranking" },
     { key: "api", path: "/api-docs" },
-    { key: "admin", label: "审核", path: "/admin" },
+    ...(isAdminSession ? [{ key: "admin", label: "审核", path: "/admin" }] : []),
   ];
 
   const isActiveRoute = (path: string) => {

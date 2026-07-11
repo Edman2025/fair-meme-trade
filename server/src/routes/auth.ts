@@ -1,7 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { db } from "../db/client";
 import { walletSessions } from "../db/schema";
-import { issueToken, makeLoginMessage, makeNonce, verifyWalletSignature } from "../lib/auth";
+import { issueToken, makeLoginMessage, makeNonce, verifyToken, verifyWalletSignature } from "../lib/auth";
+import { requireUser, sendAuthError } from "../lib/http";
 import { assertRateLimit } from "../lib/rateLimiter";
 
 export const registerAuthRoutes = async (app: FastifyInstance) => {
@@ -42,6 +43,15 @@ export const registerAuthRoutes = async (app: FastifyInstance) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60,
     });
-    return { token, address };
+    return { token, address, isAdmin: verifyToken(token).isAdmin };
+  });
+
+  app.get("/api/auth/me", async (request, reply) => {
+    try {
+      const user = requireUser(request);
+      return user;
+    } catch (error) {
+      return sendAuthError(reply, error);
+    }
   });
 };

@@ -59,6 +59,12 @@ export interface AuthNonceResponse {
 export interface AuthVerifyResponse {
   token: string;
   address: string;
+  isAdmin: boolean;
+}
+
+export interface AuthMeResponse {
+  address: string;
+  isAdmin: boolean;
 }
 
 export const requestAuthNonce = (address: string) => apiRequest<AuthNonceResponse>("/api/auth/nonce", {
@@ -70,3 +76,5 @@ export const verifyAuthSignature = (sessionId: number, signature: string) => api
   method: "POST",
   body: JSON.stringify({ sessionId, signature }),
 });
+
+export const getAuthMe = (token?: string) => apiRequest<AuthMeResponse>("/api/auth/me", { token });
