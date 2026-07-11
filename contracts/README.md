@@ -28,6 +28,6 @@ npm run verify:bsc-testnet
 ## Production Contract Boundaries
 
 - Token creation must call `FairMemeFactoryV3.createToken`.
-- Project review/launch must be submitted by the backend admin signer and confirmed by indexer events.
+- New product flow auto-launches projects at the backend/indexer layer after `TokenCreated`; review/launch contract calls remain legacy compatibility operations for older records.
 - LP add uses PancakeSwap Router; LP custody uses `LpLockVaultV3`.
 - Commission withdrawal requests must call `CommissionVault.requestWithdrawal`; the backend must not create off-chain withdrawal records as the source of truth.

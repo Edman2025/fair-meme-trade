@@ -38,7 +38,7 @@ Production state is sourced from the Fastify API, Postgres, the long-running ind
 
 ## MVP Rules Preserved
 
-- Token creation starts in `building`.
+- Token creation is auto-launched: the indexer stores new `TokenCreated` projects as `launched` and does not create token review queue items.
 - LP positions can be `launch` or `trading`.
 - Following is forced for tokens with an active LP position.
 - Production trading uses PancakeSwap wallet transactions. Managed limit/risk orders are backend records until an executor submits a real swap transaction.
@@ -47,7 +47,7 @@ Production state is sourced from the Fastify API, Postgres, the long-running ind
 
 ## Contract/Event Boundary
 
-- Factory V3 emits `TokenCreated`, `ProjectReviewed`, and `ProjectLaunched`. Public fake trade/LP event methods are not part of the production flow.
+- Factory V3 emits `TokenCreated`, `ProjectReviewed`, and `ProjectLaunched`. New product flow treats `TokenCreated` as auto-launched at the backend/indexer layer; public fake trade/LP event methods are not part of the production flow.
 - LP vault emits `LpLocked` and `LpWithdrawn`.
 - Indexer should project those events into the same shape as `src/contexts/MvpContext.tsx` `IndexedEvent`.
-- Admin queue should be the backend source of truth for token review, node approval, and withdrawal approval.
+- Admin queue remains the backend source of truth for node approval and withdrawal approval. Token review/launch actions are legacy compatibility paths, not required for newly created projects.

@@ -865,7 +865,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         contractAddress: formatAddressSeed(symbol),
         creatorWallet: currentWalletAddress,
         lpPairToken: input.lpCurrency,
-        status: "building",
+        status: "launched",
         category: "meme",
         website: input.website,
         twitter: input.twitter,
@@ -898,14 +898,6 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         walletAddress: currentWalletAddress,
         payload: { name: input.name, lpCurrency: input.lpCurrency, status: token.status },
       }), ...current]);
-      setAdminQueue((current) => [ {
-        id: `review-token-${symbol.toLowerCase()}-${Date.now()}`,
-        type: "token",
-        targetId: symbol,
-        title: `代币审核: ${input.name} (${symbol})`,
-        status: "pending",
-        createdAt: new Date().toLocaleString(),
-      }, ...current]);
       return token;
     },
     toggleFollow: (symbol) => {

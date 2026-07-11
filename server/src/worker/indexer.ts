@@ -1,5 +1,5 @@
 import { Interface, JsonRpcProvider, WebSocketProvider, formatUnits } from "ethers";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { chainTransactions, commissions, indexedEvents, indexerState, lpPositions, reviewQueue, tokens, withdrawals } from "../db/schema";
 import { env } from "../env";
@@ -182,7 +182,7 @@ const handleLog = async (log: IndexerLog) => {
       metadataUri: String(payload.metadataURI),
       pairToken: String(payload.pairToken),
       projectId,
-      status: "building",
+      status: "launched",
     }).onConflictDoUpdate({
       target: tokens.symbol,
       set: {
@@ -192,22 +192,9 @@ const handleLog = async (log: IndexerLog) => {
         metadataUri: String(payload.metadataURI),
         pairToken: String(payload.pairToken),
         projectId,
-        status: "building",
+        status: "launched",
       },
     });
-
-    const [existingReview] = await db.select().from(reviewQueue).where(and(
-      eq(reviewQueue.type, "token"),
-      eq(reviewQueue.targetId, String(projectId)),
-    )).limit(1);
-    if (!existingReview) {
-      await db.insert(reviewQueue).values({
-        type: "token",
-        targetId: String(projectId),
-        title: `${symbol} token review`,
-        status: "pending",
-      });
-    }
   }
 
   if (parsed.name === "ProjectReviewed") {

@@ -340,7 +340,7 @@ const Api = () => {
   "name": "Token Name",
   "tokenAddress": "0xToken...",
   "projectId": 1,
-  "status": "building"
+  "status": "launched"
 }`}
                             </pre>
                           </div>

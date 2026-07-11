@@ -238,7 +238,8 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
   app.get("/api/admin/review-queue", async (request, reply) => {
     try {
       requireAdmin(request);
-      return db.select().from(reviewQueue).orderBy(desc(reviewQueue.createdAt));
+      const rows = await db.select().from(reviewQueue).orderBy(desc(reviewQueue.createdAt));
+      return rows.filter((row) => row.type !== "token");
     } catch (error) {
       return sendAuthError(reply, error);
     }
