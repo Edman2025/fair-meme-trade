@@ -43,6 +43,7 @@ export interface Token {
   releaseLinearDays?: number;
   marketMetricsReady?: boolean;
   pairAddress?: string;
+  totalLpShares?: number;
   priorityBuyAmount?: string;
   priorityBuyCurrency?: "USDT" | "BNB";
 }
@@ -382,6 +383,7 @@ const parseTokenMetadata = (metadataUri?: string) => {
         twitter?: string;
         telegram?: string;
         priorityBuy?: { amount?: string; currency?: string };
+        initialLiquidity?: { shares?: string; totalShares?: string; value?: number; currency?: string };
       };
     }
   } catch {
@@ -417,6 +419,7 @@ const tokenFromServer = (token: ServerToken): Token => {
     marketMetricsReady: false,
     priorityBuyAmount: token.priorityBuyAmount || metadata.priorityBuy?.amount,
     priorityBuyCurrency: (token.priorityBuyCurrency || metadata.priorityBuy?.currency) as "USDT" | "BNB" | undefined,
+    totalLpShares: Number(metadata.initialLiquidity?.totalShares || 0) || undefined,
   };
 };
 

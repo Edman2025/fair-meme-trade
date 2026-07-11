@@ -366,6 +366,7 @@ const Create = () => {
             hasMarketing: values.hasMarketing,
             initialLiquidity: {
               shares: values.teamLpShares,
+              totalShares: values.totalLpShares,
               value: teamLpValue,
               currency: values.lpCurrency,
               valueUsd: liquidityUsdValue,

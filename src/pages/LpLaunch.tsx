@@ -73,13 +73,13 @@ const LpLaunch = () => {
     creatorLpValue: userPosition?.userLpValue || "0 LP",
     totalLaunchLp: token.totalSupply,
     minPerPerson: "1",
-    maxPerPerson: "1,000,000,000",
-    totalSlots: 100,
-    claimedSlots: Math.min(token.lpCount, 100),
+    maxPerPerson: token.totalLpShares ? token.totalLpShares.toLocaleString() : "等待同步",
+    totalSlots: token.totalLpShares || 0,
+    claimedSlots: token.totalLpShares ? Math.min(token.lpCount, token.totalLpShares) : 0,
     launchDeadline: token.launchDeadline || "等待 indexer 同步",
     tradingStartTime: token.tradingStartTime || "等待 indexer 同步",
     lockPeriod: `${token.lockPeriodDays || 30}天`,
-    releaseType: token.releaseType === "oneTime" ? "once" : "linear",
+    releaseType: token.releaseType === "linear" ? "linear" : "once",
     releaseLinearDays: token.releaseLinearDays || 0,
     marketingTax: token.hasMarketing ? 2 : 0,
     dividendTax: token.hasDividend ? 3 : 0,
@@ -98,7 +98,7 @@ const LpLaunch = () => {
     totalParticipants: tokenPositions.length,
     recentActivities,
   } : null;
-  const claimProgress = data ? (data.claimedSlots / data.totalSlots) * 100 : 0;
+  const claimProgress = data?.totalSlots ? (data.claimedSlots / data.totalSlots) * 100 : 0;
   const hasUserLp = data ? parseFloat(data.userLpAmount.replace(/,/g, "")) > 0 : false;
 
   const handleCopy = (text: string) => {
