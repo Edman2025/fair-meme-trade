@@ -44,6 +44,8 @@ export interface Token {
   marketMetricsReady?: boolean;
   pairAddress?: string;
   totalLpShares?: number;
+  initialLpCreatorShares?: number;
+  initialLpPairValue?: number;
   priorityBuyAmount?: string;
   priorityBuyCurrency?: "USDT" | "BNB";
 }
@@ -420,6 +422,8 @@ const tokenFromServer = (token: ServerToken): Token => {
     priorityBuyAmount: token.priorityBuyAmount || metadata.priorityBuy?.amount,
     priorityBuyCurrency: (token.priorityBuyCurrency || metadata.priorityBuy?.currency) as "USDT" | "BNB" | undefined,
     totalLpShares: Number(metadata.initialLiquidity?.totalShares || 0) || undefined,
+    initialLpCreatorShares: Number(metadata.initialLiquidity?.shares || 0) || undefined,
+    initialLpPairValue: Number(metadata.initialLiquidity?.value || 0) || undefined,
   };
 };
 

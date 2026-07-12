@@ -14,10 +14,11 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/hooks/use-toast";
 import { useMvp } from "@/contexts/MvpContext";
 import { canUseRealChain } from "@/lib/chainConfig";
-import { addLiquidityEthAndLock, releaseVaultPositionAmount, withdrawVaultPosition } from "@/lib/pancakeSwap";
+import { addLiquidityEthAndLock, getTokenBalance, releaseVaultPositionAmount, withdrawVaultPosition } from "@/lib/pancakeSwap";
 import { apiRequest } from "@/lib/backendApi";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
 import TokenLogo from "@/components/TokenLogo";
+import { formatUnits, parseUnits } from "ethers";
 import { 
   ArrowLeft, 
   Copy, 
@@ -79,7 +80,13 @@ const LpLaunch = () => {
     creatorLpValue: userPosition?.userLpValue || "0 LP",
     totalLaunchLp: token.totalSupply,
     minPerPerson: "1",
-    maxPerPerson: token.totalLpShares ? token.totalLpShares.toLocaleString() : "等待同步",
+    maxPerPerson: walletAddress && walletAddress.toLowerCase() === token.creatorWallet.toLowerCase()
+      ? String(token.totalLpShares || 0)
+      : "1",
+    tokensPerSlot: token.totalLpShares ? Number(parseLpAmount(token.totalSupply)) / token.totalLpShares : 0,
+    bnbPerSlot: token.initialLpCreatorShares && token.initialLpPairValue
+      ? token.initialLpPairValue / token.initialLpCreatorShares
+      : 0,
     totalSlots: token.totalLpShares || 0,
     claimedSlots: token.totalLpShares ? Math.min(token.lpCount, token.totalLpShares) : 0,
     launchDeadline: token.launchDeadline || "等待 indexer 同步",
@@ -117,9 +124,11 @@ const LpLaunch = () => {
   };
 
   const handleAddLp = async () => {
+    let activeWalletAddress = walletAddress;
     if (!isConnected) {
       try {
         const signature = await connectInjectedWallet();
+        activeWalletAddress = signature.address;
         toast({
           title: signature.mode === "wallet" ? "真实钱包已签名" : "已连接演示钱包",
           description: signature.mode === "wallet" ? "LP 添加将记录到当前钱包地址。" : "已启用开发演示钱包。",
@@ -167,6 +176,15 @@ const LpLaunch = () => {
     setIsSubmittingLp(true);
     try {
       if (canUseRealChain() && token.contractAddress) {
+        const tokenAmount = (amount * data.tokensPerSlot).toFixed(18).replace(/0+$/, "").replace(/\.$/, "");
+        if (!data.tokensPerSlot || !tokenAmount || Number(tokenAmount) <= 0) {
+          throw new Error("无法读取每份 LP 对应的代币数量，请等待项目 metadata 同步。");
+        }
+        const walletTokenBalance = await getTokenBalance(token.contractAddress, activeWalletAddress);
+        const requiredTokenAmount = parseUnits(tokenAmount, 18);
+        if (walletTokenBalance < requiredTokenAmount) {
+          throw new Error(`当前钱包 ${data.symbol} 余额为 ${formatUnits(walletTokenBalance, 18)}，添加 ${amount} 份 LP 需要 ${tokenAmount} ${data.symbol}。请切换到持有代币的项目创建钱包。`);
+        }
         const unlockAt = Math.floor(Date.now() / 1000) + (token.lockPeriodDays || 30) * 24 * 60 * 60;
         const releaseStart = unlockAt;
         const releaseEnd = token.releaseType === "linear"
@@ -174,7 +192,7 @@ const LpLaunch = () => {
           : releaseStart;
         const result = await addLiquidityEthAndLock({
           tokenAddress: token.contractAddress,
-          tokenAmount: lpAmount.replace(/,/g, ""),
+          tokenAmount,
           bnbAmount,
           slippagePercent: 1,
           unlockAt,
@@ -188,9 +206,9 @@ const LpLaunch = () => {
             txHash: result.addLiquidityTxHash,
             action: "addLiquidity",
             tokenAddress: token.contractAddress,
-            walletAddress,
+            walletAddress: activeWalletAddress,
             status: "submitted",
-            payload: { pairAddress: result.pairAddress, bnbAmount, tokenAmount: lpAmount },
+            payload: { pairAddress: result.pairAddress, bnbAmount, tokenAmount, shares: lpAmount },
           }),
         });
         if (result.lockTxHash) {
@@ -200,7 +218,7 @@ const LpLaunch = () => {
               txHash: result.lockTxHash,
               action: "lockLp",
               tokenAddress: token.contractAddress,
-              walletAddress,
+              walletAddress: activeWalletAddress,
               status: "submitted",
               payload: { pairAddress: result.pairAddress, lpAmount: result.lpAmount, unlockAt, releaseStart, releaseEnd },
             }),
@@ -529,7 +547,7 @@ const LpLaunch = () => {
           <div className="space-y-4">
             <div>
               <label className="text-sm text-muted-foreground mb-2 block">
-                LP代币数量
+                LP 份额数量
               </label>
               <Input
                 type="text"
@@ -538,6 +556,12 @@ const LpLaunch = () => {
                 onChange={(e) => setLpAmount(e.target.value)}
                 className="text-lg"
               />
+              {Number(lpAmount) > 0 && data.tokensPerSlot > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {lpAmount} 份需要 {(Number(lpAmount) * data.tokensPerSlot).toLocaleString()} {data.symbol}
+                  {data.bnbPerSlot > 0 ? `，项目初始比例约 ${(Number(lpAmount) * data.bnbPerSlot).toFixed(6)} BNB` : ""}
+                </p>
+              )}
             </div>
 
             <div>
