@@ -759,6 +759,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     if (enableDemoFallback) return;
     let cancelled = false;
     let requestInFlight = false;
+    let nextMetricsRefreshAt = 0;
 
     const refreshTokens = async () => {
       if (requestInFlight || document.visibilityState === "hidden") return;
@@ -766,14 +767,27 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       try {
         const serverTokens = await apiRequest<ServerToken[]>("/api/tokens");
         if (cancelled) return;
-        const incoming = serverTokens.map(tokenFromServer);
+        let incoming = serverTokens.map(tokenFromServer);
+        if (Date.now() >= nextMetricsRefreshAt) {
+          nextMetricsRefreshAt = Date.now() + 5_000;
+          const metricPairs = await Promise.all(incoming.map(async (token) => {
+            try {
+              return [token.symbol, await apiRequest<ServerTokenMetrics>(`/api/tokens/${token.symbol}/metrics`)] as const;
+            } catch {
+              return [token.symbol, undefined] as const;
+            }
+          }));
+          if (cancelled) return;
+          const metricsBySymbol = new Map(metricPairs);
+          incoming = incoming.map((token) => applyTokenMetrics(token, metricsBySymbol.get(token.symbol)));
+        }
         setTokens((current) => {
           const currentBySymbol = new Map(current.map((token) => [token.symbol, token]));
           return incoming.map((token) => {
             const existing = currentBySymbol.get(token.symbol);
             if (!existing) return token;
             const merged = { ...existing, ...token };
-            if (!existing.marketMetricsReady) return merged;
+            if (!existing.marketMetricsReady || token.marketMetricsReady) return merged;
             return {
               ...merged,
               totalSupply: existing.totalSupply,
