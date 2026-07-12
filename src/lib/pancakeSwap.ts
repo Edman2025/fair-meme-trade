@@ -164,6 +164,49 @@ export const getPancakePair = async (tokenAddress: string) => {
   return pair;
 };
 
+export const getPendingLpBalance = async (tokenAddress: string, owner: string) => {
+  const pairAddress = await getPancakePair(tokenAddress);
+  if (pairAddress === "0x0000000000000000000000000000000000000000") {
+    return { pairAddress, balance: 0n };
+  }
+  return { pairAddress, balance: await getTokenBalance(pairAddress, owner) };
+};
+
+export const lockExistingLpPosition = async (params: {
+  tokenAddress: string;
+  unlockAt: number;
+  releaseType?: "once" | "linear";
+  releaseStart?: number;
+  releaseEnd?: number;
+}) => {
+  await ensureWalletChain(bscTestnetConfig);
+  const account = await getAccount();
+  const { pairAddress, balance } = await getPendingLpBalance(params.tokenAddress, account);
+  if (balance <= 0n) throw new Error("当前钱包没有待锁仓的 Pancake LP Token。");
+
+  const allowanceData = erc20Interface.encodeFunctionData("allowance", [account, bscTestnetConfig.lpVaultAddress]);
+  const allowanceRaw = await ethCall(pairAddress, allowanceData);
+  const [allowance] = erc20Interface.decodeFunctionResult("allowance", allowanceRaw) as unknown as [bigint];
+  if (allowance < balance) {
+    const approveData = erc20Interface.encodeFunctionData("approve", [bscTestnetConfig.lpVaultAddress, balance]);
+    const approveTxHash = await sendTransaction({ from: account, to: pairAddress, data: approveData });
+    await waitForTransactionReceipt(approveTxHash);
+  }
+
+  const lockData = vaultInterface.encodeFunctionData("lock", [
+    pairAddress,
+    params.tokenAddress,
+    balance,
+    BigInt(params.unlockAt),
+    params.releaseType === "linear" ? 1 : 0,
+    BigInt(params.releaseStart || params.unlockAt),
+    BigInt(params.releaseEnd || params.releaseStart || params.unlockAt),
+  ]);
+  const lockTxHash = await sendTransaction({ from: account, to: bscTestnetConfig.lpVaultAddress!, data: lockData });
+  await waitForTransactionReceipt(lockTxHash);
+  return { pairAddress, lockTxHash, lpAmount: formatUnits(balance, 18), account };
+};
+
 export const addLiquidityEthAndLock = async (params: {
   tokenAddress: string;
   tokenAmount: string;

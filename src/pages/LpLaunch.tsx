@@ -14,11 +14,12 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/hooks/use-toast";
 import { useMvp } from "@/contexts/MvpContext";
 import { canUseRealChain } from "@/lib/chainConfig";
-import { addLiquidityEthAndLock, getTokenBalance, releaseVaultPositionAmount, withdrawVaultPosition } from "@/lib/pancakeSwap";
+import { addLiquidityEthAndLock, getPendingLpBalance, getTokenBalance, lockExistingLpPosition, releaseVaultPositionAmount, withdrawVaultPosition } from "@/lib/pancakeSwap";
 import { apiRequest } from "@/lib/backendApi";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
 import TokenLogo from "@/components/TokenLogo";
 import { formatUnits, parseUnits } from "ethers";
+import { getWalletErrorMessage } from "@/lib/walletAdapter";
 import { 
   ArrowLeft, 
   Copy, 
@@ -176,6 +177,36 @@ const LpLaunch = () => {
     setIsSubmittingLp(true);
     try {
       if (canUseRealChain() && token.contractAddress) {
+        const unlockAt = Math.floor(Date.now() / 1000) + (token.lockPeriodDays || 30) * 24 * 60 * 60;
+        const releaseStart = unlockAt;
+        const releaseEnd = token.releaseType === "linear"
+          ? releaseStart + Math.max(1, token.releaseLinearDays || 1) * 24 * 60 * 60
+          : releaseStart;
+        const pendingLp = await getPendingLpBalance(token.contractAddress, activeWalletAddress);
+        if (pendingLp.balance > 0n) {
+          const recovered = await lockExistingLpPosition({
+            tokenAddress: token.contractAddress,
+            unlockAt,
+            releaseType: token.releaseType === "linear" ? "linear" : "once",
+            releaseStart,
+            releaseEnd,
+          });
+          await apiRequest("/api/chain-transactions", {
+            method: "POST",
+            body: JSON.stringify({
+              txHash: recovered.lockTxHash,
+              action: "lockLp",
+              tokenAddress: token.contractAddress,
+              walletAddress: activeWalletAddress,
+              status: "confirmed",
+              payload: { pairAddress: recovered.pairAddress, lpAmount: recovered.lpAmount, unlockAt, recovered: true },
+            }),
+          }).catch(() => undefined);
+          toast({ title: "已有 LP 已完成锁仓", description: `Vault lock: ${recovered.lockTxHash.slice(0, 10)}...` });
+          setLpAmount("");
+          setBnbAmount("");
+          return;
+        }
         const tokenAmount = (amount * data.tokensPerSlot).toFixed(18).replace(/0+$/, "").replace(/\.$/, "");
         if (!data.tokensPerSlot || !tokenAmount || Number(tokenAmount) <= 0) {
           throw new Error("无法读取每份 LP 对应的代币数量，请等待项目 metadata 同步。");
@@ -185,11 +216,6 @@ const LpLaunch = () => {
         if (walletTokenBalance < requiredTokenAmount) {
           throw new Error(`当前钱包 ${data.symbol} 余额为 ${formatUnits(walletTokenBalance, 18)}，添加 ${amount} 份 LP 需要 ${tokenAmount} ${data.symbol}。请切换到持有代币的项目创建钱包。`);
         }
-        const unlockAt = Math.floor(Date.now() / 1000) + (token.lockPeriodDays || 30) * 24 * 60 * 60;
-        const releaseStart = unlockAt;
-        const releaseEnd = token.releaseType === "linear"
-          ? releaseStart + (token.releaseLinearDays || 0) * 24 * 60 * 60
-          : releaseStart;
         const result = await addLiquidityEthAndLock({
           tokenAddress: token.contractAddress,
           tokenAmount,
@@ -210,7 +236,7 @@ const LpLaunch = () => {
             status: "submitted",
             payload: { pairAddress: result.pairAddress, bnbAmount, tokenAmount, shares: lpAmount },
           }),
-        });
+        }).catch(() => undefined);
         if (result.lockTxHash) {
           await apiRequest("/api/chain-transactions", {
             method: "POST",
@@ -222,7 +248,7 @@ const LpLaunch = () => {
               status: "submitted",
               payload: { pairAddress: result.pairAddress, lpAmount: result.lpAmount, unlockAt, releaseStart, releaseEnd },
             }),
-          });
+          }).catch(() => undefined);
         }
         toast({
           title: result.lockTxHash ? "LP 已添加并提交锁仓" : "LP 添加交易已提交",
@@ -242,7 +268,7 @@ const LpLaunch = () => {
     } catch (error) {
       toast({
         title: "LP 添加失败",
-        description: error instanceof Error ? error.message : "请检查钱包、余额和 approve 状态。",
+        description: getWalletErrorMessage(error, "请检查钱包、余额和 approve 状态。"),
         variant: "destructive",
       });
     } finally {

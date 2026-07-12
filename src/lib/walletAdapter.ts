@@ -40,6 +40,25 @@ declare global {
 
 const getProvider = () => (typeof window !== "undefined" ? window.ethereum : undefined);
 
+export const getWalletErrorMessage = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== "object") return error instanceof Error ? error.message : fallback;
+  const value = error as {
+    code?: number;
+    message?: string;
+    shortMessage?: string;
+    reason?: string;
+    data?: { message?: string };
+    info?: { error?: { message?: string } };
+  };
+  if (value.code === 4001) return "用户取消了钱包交易确认。";
+  return value.shortMessage
+    || value.reason
+    || value.data?.message
+    || value.info?.error?.message
+    || value.message
+    || fallback;
+};
+
 export const hasInjectedWallet = () => Boolean(getProvider());
 
 export const requestAccounts = async () => {
