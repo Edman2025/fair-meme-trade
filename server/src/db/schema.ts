@@ -33,6 +33,7 @@ export const chainTransactions = pgTable("chain_transactions", {
   action: text("action").notNull(),
   tokenAddress: text("token_address"),
   walletAddress: text("wallet_address"),
+  chainId: integer("chain_id").notNull().default(97),
   status: text("status").notNull().default("submitted"),
   payload: jsonb("payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

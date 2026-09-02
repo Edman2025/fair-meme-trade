@@ -25,6 +25,12 @@ Required environment:
 - `REDIS_URL` for shared auth/API-key rate limiting in multi-replica API deployments
 - `RATE_LIMIT_PREFIX` optional namespace for Redis rate-limit keys
 - `BSCSCAN_API_KEY` for optional contract verification
+- `ROBINHOOD_RPC_URL` for PONS V2 event and reserve reads
+- `ROBINHOOD_EXPLORER_URL`
+- `ROBINHOOD_MULTICALL3_ADDRESS` (defaults to the canonical Multicall3 deployment)
+- `ROBINHOOD_PONS_LOOKBACK_BLOCKS` for direct token-address lookups
+- `PONS_V1_FACTORY_ADDRESS`
+- `PONS_V2_FACTORY_ADDRESS`
 
 Deployment commands:
 
@@ -42,6 +48,8 @@ Smoke checks:
 - `/api/health`
 - `/api/indexer/status`
 - `/api/tokens/ROCKET`
+- `/api/chains/robinhood-mainnet/status`
+- `/api/chains/robinhood-mainnet/pons/launches?limit=6`
 - `/admin`
 - `/token/ROCKET`
 - `/lp-launch/ROCKET`

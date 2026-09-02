@@ -35,6 +35,7 @@ import Footer from "@/components/Footer";
 import { useMvp } from "@/contexts/MvpContext";
 import { createTokenOnChain } from "@/lib/chainWrite";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import { useChain } from "@/contexts/ChainContext";
 import { apiRequest } from "@/lib/backendApi";
 import { addLiquidityEthAndLock } from "@/lib/pancakeSwap";
 import { formatUnits, parseUnits } from "ethers";
@@ -162,6 +163,7 @@ const Create = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { createToken, isConnected, connectWallet, connectInjectedWallet, walletAddress } = useMvp();
+  const { activeChain } = useChain();
   const [isCreating, setIsCreating] = useState(false);
   const [creationStep, setCreationStep] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -220,6 +222,11 @@ const Create = () => {
   }, [bnbUsdPrice, lpCurrency, teamLpValue]);
 
   useEffect(() => {
+    if (activeChain.key !== "bsc-testnet") {
+      setBnbUsdPrice(null);
+      setBnbUsdPriceError("");
+      return;
+    }
     let cancelled = false;
     apiRequest<{ price: number }>("/api/market/bnb-usd")
       .then((data) => {
@@ -237,9 +244,65 @@ const Create = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeChain.key]);
 
   const calculatedLaunchTime = lpEndTime ? new Date(lpEndTime.getTime() + 10 * 60 * 1000) : null;
+
+  if (activeChain.protocol === "pons-v2") {
+    const factoryAddress = activeChain.pons?.v2FactoryAddress || "";
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <main className="container mx-auto max-w-4xl flex-1 px-4 py-8">
+          <Button variant="ghost" onClick={() => navigate("/")} className="mb-6">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            返回 Robinhood 市场
+          </Button>
+          <div className="border-b border-border pb-6">
+            <p className="text-sm font-medium text-emerald-400">Robinhood Chain · PONS V2</p>
+            <h1 className="mt-2 text-3xl font-bold">通过 PONS 发射代币</h1>
+            <p className="mt-3 max-w-2xl text-muted-foreground">
+              Robinhood Chain 使用 PONS bonding curve 和毕业后的 Uniswap V4 永久锁仓，不复用 BSC 的 Factory、Pancake LP 或 LP Vault 表单。
+            </p>
+          </div>
+          <div className="grid gap-0 border-b border-border md:grid-cols-3">
+            <div className="py-6 md:pr-6">
+              <p className="text-sm text-muted-foreground">网络</p>
+              <p className="mt-2 font-semibold">Robinhood Chain (4663)</p>
+            </div>
+            <div className="border-t border-border py-6 md:border-l md:border-t-0 md:px-6">
+              <p className="text-sm text-muted-foreground">交易阶段</p>
+              <p className="mt-2 font-semibold">Bonding curve → Uniswap V4</p>
+            </div>
+            <div className="border-t border-border py-6 md:border-l md:border-t-0 md:pl-6">
+              <p className="text-sm text-muted-foreground">流动性</p>
+              <p className="mt-2 font-semibold">毕业后永久锁定</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3 py-8">
+            <Button asChild className="bg-emerald-600 hover:bg-emerald-600/90">
+              <a href="https://ponsfamily.com" target="_blank" rel="noopener noreferrer">
+                打开 PONS 发射页
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+            {factoryAddress && (
+              <Button variant="outline" asChild>
+                <a href={`${activeChain.blockExplorerUrls[0]}/address/${factoryAddress}`} target="_blank" rel="noopener noreferrer">
+                  查看 PONS V2 Factory
+                  <ExternalLink className="ml-2 h-4 w-4" />
+                </a>
+              </Button>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            当前入口不会生成本地项目或伪造交易；发射完成后，本站会从 PONS Factory 事件自动发现并展示该项目。
+          </p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   const addMarketingAddress = () => {
     if (marketingAddresses.length < 5) {

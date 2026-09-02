@@ -13,6 +13,7 @@ interface TokenCardProps {
   lpCount: number;
   holders: number;
   change24h: number;
+  change24hReady?: boolean;
   currentPrice: string;
   marketCap: string;
   volume24h: string;
@@ -26,6 +27,10 @@ interface TokenCardProps {
   telegram?: string;
   status?: "launched" | "pending" | "building";
   marketMetricsReady?: boolean;
+  protocol?: "fair-meme-v3" | "pons-v2";
+  graduationProgress?: number;
+  graduated?: boolean;
+  contractAddress?: string;
 }
 
 const TokenCard = ({
@@ -36,6 +41,7 @@ const TokenCard = ({
   lpCount,
   holders,
   change24h,
+  change24hReady,
   currentPrice,
   marketCap,
   volume24h,
@@ -49,6 +55,10 @@ const TokenCard = ({
   telegram,
   status = "launched",
   marketMetricsReady,
+  protocol,
+  graduationProgress,
+  graduated,
+  contractAddress,
 }: TokenCardProps) => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -58,6 +68,8 @@ const TokenCard = ({
     // 如果是building状态，跳转到LP发射页面
     if (status === "building") {
       navigate(`/lp-launch/${symbol}`);
+    } else if (protocol === "pons-v2" && contractAddress) {
+      navigate(`/token/${contractAddress}`);
     } else {
       navigate(`/token/${symbol}`);
     }
@@ -81,7 +93,7 @@ const TokenCard = ({
             </div>
           </div>
           <div className="text-right">
-            {marketMetricsReady ? (
+            {marketMetricsReady && change24hReady !== false ? (
               <div className={`flex items-center justify-end gap-1 ${isPositive ? "text-success" : "text-destructive"} animate-fade-in`}>
                 {isPositive ? (
                   <TrendingUp className="h-4 w-4" />
@@ -93,7 +105,7 @@ const TokenCard = ({
                 </span>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">指标同步中</p>
+              <p className="text-xs text-muted-foreground">{protocol === "pons-v2" ? "24h 未聚合" : "指标同步中"}</p>
             )}
             <p className="text-sm font-bold text-foreground mt-1 animate-scale-in">{currentPrice}</p>
           </div>
@@ -101,6 +113,11 @@ const TokenCard = ({
 
         {/* Badges */}
         <div className="flex flex-wrap gap-2 mb-4">
+          {protocol === "pons-v2" && (
+            <Badge variant="outline" className="border-emerald-500/50 text-emerald-400">
+              PONS V2 {graduated ? "· V4" : "· Curve"}
+            </Badge>
+          )}
           {hasDividend && (
             <Badge variant="secondary" className="bg-secondary/20">
               {t("dividend")}
@@ -139,16 +156,28 @@ const TokenCard = ({
         </div>
 
         {/* User Stats */}
-        <div className="flex items-center gap-4 mb-4 text-sm">
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Droplet className="h-4 w-4" />
-            <span>{lpCount} {t("myLp").split(" ")[1] || "LP"}</span>
+        {protocol === "pons-v2" ? (
+          <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{graduated ? "已毕业到 Uniswap V4" : "Bonding curve 进度"}</span>
+              <span>{graduated ? "100%" : `${graduationProgress?.toFixed(2) || "0.00"}%`}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-emerald-400" style={{ width: `${graduated ? 100 : Math.max(0, Math.min(100, graduationProgress || 0))}%` }} />
+            </div>
           </div>
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Users className="h-4 w-4" />
-            <span>{holders} {t("holders")}</span>
+        ) : (
+          <div className="flex items-center gap-4 mb-4 text-sm">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Droplet className="h-4 w-4" />
+              <span>{lpCount} {t("myLp").split(" ")[1] || "LP"}</span>
+            </div>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Users className="h-4 w-4" />
+              <span>{holders} {t("holders")}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Description */}
         <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{description}</p>

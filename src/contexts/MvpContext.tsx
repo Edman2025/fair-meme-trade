@@ -1,16 +1,19 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { bscTestnetConfig, canUseRealChain, isNativePairToken } from "@/lib/chainConfig";
+import { ChainKey, ChainProtocol, bscTestnetConfig, canUseRealChain, isNativePairToken } from "@/lib/chainConfig";
 import { buildFactoryCalldata } from "@/lib/contractAbi";
 import { requestCommissionVaultWithdrawal } from "@/lib/commissionVault";
 import { apiRequest, clearStoredAuthToken, getAuthMe, getStoredAuthToken, requestAuthNonce, storeAuthToken, verifyAuthSignature } from "@/lib/backendApi";
 import { ensureWalletChain, getConnectedAccounts, hasInjectedWallet, onWalletAccountsChanged, personalSign, requestAccounts, sendValueTransaction, signLoginMessage } from "@/lib/walletAdapter";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import { useChain } from "@/contexts/ChainContext";
 
 export type TokenStatus = "launched" | "pending" | "building";
 export type LpPhase = "launch" | "trading";
 export type TradeSide = "buy" | "sell";
 
 export interface Token {
+  chainKey: ChainKey;
+  protocol: ChainProtocol;
   logo: string;
   name: string;
   symbol: string;
@@ -18,6 +21,7 @@ export interface Token {
   lpCount: number;
   holders: number;
   change24h: number;
+  change24hReady?: boolean;
   currentPrice: string;
   marketCap: string;
   volume24h: string;
@@ -25,7 +29,7 @@ export interface Token {
   description: string;
   contractAddress: string;
   creatorWallet: string;
-  lpPairToken: "BNB" | "USDT";
+  lpPairToken: string;
   status: TokenStatus;
   category: "meme" | "usStock";
   hasDividend?: boolean;
@@ -48,6 +52,14 @@ export interface Token {
   initialLpPairValue?: number;
   priorityBuyAmount?: string;
   priorityBuyCurrency?: "USDT" | "BNB";
+  curveAddress?: string;
+  pairTokenAddress?: string;
+  graduated?: boolean;
+  graduationProgress?: number;
+  feeBps?: number;
+  creatorTaxBps?: number;
+  quoteDecimals?: number;
+  launchTxHash?: string;
 }
 
 export interface WalletBalance {
@@ -177,6 +189,8 @@ export interface AdminReviewItem {
 
 interface MvpContextType {
   tokens: Token[];
+  isTokenFeedLoading: boolean;
+  tokenFeedError: string;
   walletAddress: string;
   isConnected: boolean;
   walletBalances: WalletBalance[];
@@ -194,6 +208,7 @@ interface MvpContextType {
   connectInjectedWallet: () => Promise<WalletSignatureRecord>;
   disconnectWallet: () => void;
   getTokenBySymbol: (symbol?: string) => Token | undefined;
+  loadTokenByAddress: (address: string) => Promise<Token | undefined>;
   createToken: (token: CreateTokenInput) => Token;
   toggleFollow: (symbol: string) => void;
   recordTrade: (trade: Omit<TradeRecord, "id" | "timestamp" | "status">, chainTx?: ChainTransaction) => TradeRecord;
@@ -303,6 +318,36 @@ type ServerToken = {
   priorityBuyCurrency?: string | null;
 };
 
+type ServerPonsLaunch = {
+  tokenAddress: string;
+  curveAddress: string;
+  pairToken: string;
+  creatorAddress: string;
+  quoteSymbol: string;
+  quoteDecimals: number;
+  name: string;
+  symbol: string;
+  logo: string;
+  description: string;
+  website: string;
+  twitter: string;
+  telegram: string;
+  totalSupplyLabel: string;
+  currentPriceLabel: string | null;
+  marketCapLabel: string | null;
+  poolAmountLabel: string;
+  graduationProgress: number;
+  graduated: boolean;
+  feeBps: number;
+  creatorTaxBps: number;
+  txHash: string;
+};
+
+type ServerPonsLaunchFeed = {
+  latestBlock: number;
+  rows: ServerPonsLaunch[];
+};
+
 type ServerTokenMetrics = {
   holderCount: number | null;
   lpCount: number;
@@ -397,6 +442,8 @@ const parseTokenMetadata = (metadataUri?: string) => {
 const tokenFromServer = (token: ServerToken): Token => {
   const metadata = parseTokenMetadata(token.metadataUri);
   return {
+    chainKey: "bsc-testnet",
+    protocol: "fair-meme-v3",
     logo: metadata.logo || token.symbol.slice(0, 2).toUpperCase(),
     name: token.name,
     symbol: token.symbol.toUpperCase(),
@@ -427,6 +474,50 @@ const tokenFromServer = (token: ServerToken): Token => {
   };
 };
 
+const tokenFromPons = (token: ServerPonsLaunch): Token => ({
+  chainKey: "robinhood-mainnet",
+  protocol: "pons-v2",
+  logo: token.logo || token.symbol.slice(0, 2).toUpperCase(),
+  name: token.name,
+  symbol: token.symbol.toUpperCase(),
+  totalSupply: token.totalSupplyLabel,
+  lpCount: 0,
+  holders: 0,
+  change24h: 0,
+  change24hReady: false,
+  currentPrice: token.currentPriceLabel || "链上暂无价格",
+  marketCap: token.marketCapLabel || "链上暂无价格",
+  volume24h: "未聚合",
+  poolAmount: token.poolAmountLabel,
+  description: token.description || "PONS V2 onchain launch",
+  contractAddress: token.tokenAddress,
+  creatorWallet: token.creatorAddress,
+  lpPairToken: token.quoteSymbol,
+  status: "launched",
+  category: "meme",
+  website: token.website || undefined,
+  twitter: token.twitter || undefined,
+  telegram: token.telegram || undefined,
+  isFollowing: false,
+  marketMetricsReady: Boolean(token.currentPriceLabel),
+  curveAddress: token.curveAddress,
+  pairTokenAddress: token.pairToken,
+  graduated: token.graduated,
+  graduationProgress: token.graduationProgress,
+  feeBps: token.feeBps,
+  creatorTaxBps: token.creatorTaxBps,
+  quoteDecimals: token.quoteDecimals,
+  launchTxHash: token.txHash,
+});
+
+const mergePonsTokens = (current: Token[], incoming: Token[]) => {
+  const incomingAddresses = new Set(incoming.map((token) => token.contractAddress.toLowerCase()));
+  return [
+    ...incoming,
+    ...current.filter((token) => token.chainKey === "robinhood-mainnet" && !incomingAddresses.has(token.contractAddress.toLowerCase())),
+  ].slice(0, 100);
+};
+
 const applyTokenMetrics = (token: Token, metrics?: ServerTokenMetrics): Token => {
   if (!metrics) return token;
   return {
@@ -435,6 +526,7 @@ const applyTokenMetrics = (token: Token, metrics?: ServerTokenMetrics): Token =>
     lpCount: metrics.lpCount || 0,
     holders: metrics.holderCount || 0,
     change24h: metrics.change24h || 0,
+    change24hReady: metrics.change24h !== null,
     currentPrice: metrics.currentPriceLabel || "等待同步",
     marketCap: metrics.marketCapLabel || "等待同步",
     volume24h: metrics.volume24hLabel || "等待同步",
@@ -489,6 +581,7 @@ const lpPositionFromServer = (position: ServerLpPosition, tokenList: Token[]): L
 };
 
 export const MvpProvider = ({ children }: { children: ReactNode }) => {
+  const { activeChain, activeChainKey, ensureActiveWalletChain } = useChain();
   const savedState = (() => {
     if (typeof window === "undefined") return null;
     try {
@@ -533,6 +626,8 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
   const [isAdminSession, setIsAdminSession] = useState(false);
   const [marketSeriesBySymbol, setMarketSeriesBySymbol] = useState<Record<string, MarketCandle[]>>({});
   const [orderBookBySymbol, setOrderBookBySymbol] = useState<Record<string, OrderBookSnapshot>>({});
+  const [isTokenFeedLoading, setIsTokenFeedLoading] = useState(true);
+  const [tokenFeedError, setTokenFeedError] = useState("");
 
   useEffect(() => {
     if (!enableDemoFallback) {
@@ -656,9 +751,27 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const loadServerState = async () => {
+      setIsTokenFeedLoading(true);
+      setTokenFeedError("");
+      setTokens([]);
+      setMarketSeriesBySymbol({});
+      setOrderBookBySymbol({});
+      if (activeChainKey === "robinhood-mainnet") {
+        try {
+          const feed = await apiRequest<ServerPonsLaunchFeed>("/api/chains/robinhood-mainnet/pons/launches?limit=6");
+          if (!cancelled) setTokens((current) => mergePonsTokens(current, feed.rows.map(tokenFromPons)));
+        } catch (error) {
+          if (!cancelled) {
+            setTokenFeedError(error instanceof Error ? error.message : "Robinhood Chain 项目读取失败");
+          }
+        } finally {
+          if (!cancelled) setIsTokenFeedLoading(false);
+        }
+        return;
+      }
       try {
         const serverTokens = await apiRequest<ServerToken[]>("/api/tokens");
-        if (!cancelled && serverTokens.length) {
+        if (!cancelled) {
           const mappedTokens = serverTokens.map(tokenFromServer);
           const metricPairs = await Promise.all(mappedTokens.map(async (token) => {
             try {
@@ -703,8 +816,10 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
           setMarketSeriesBySymbol((current) => ({ ...current, ...Object.fromEntries(seriesPairs) }));
           setOrderBookBySymbol((current) => ({ ...current, ...Object.fromEntries(orderBookPairs) }));
         }
-      } catch {
-        // Local fallback remains the source while the API is unavailable.
+      } catch (error) {
+        if (!cancelled) setTokenFeedError(error instanceof Error ? error.message : "BSC 项目读取失败");
+      } finally {
+        if (!cancelled) setIsTokenFeedLoading(false);
       }
 
       try {
@@ -753,7 +868,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [authToken]);
+  }, [activeChainKey, authToken]);
 
   useEffect(() => {
     if (enableDemoFallback) return;
@@ -765,6 +880,14 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       if (requestInFlight || document.visibilityState === "hidden") return;
       requestInFlight = true;
       try {
+        if (activeChainKey === "robinhood-mainnet") {
+          const feed = await apiRequest<ServerPonsLaunchFeed>("/api/chains/robinhood-mainnet/pons/launches?limit=6");
+          if (!cancelled) {
+            setTokens((current) => mergePonsTokens(current, feed.rows.map(tokenFromPons)));
+            setTokenFeedError("");
+          }
+          return;
+        }
         const serverTokens = await apiRequest<ServerToken[]>("/api/tokens");
         if (cancelled) return;
         let incoming = serverTokens.map(tokenFromServer);
@@ -803,14 +926,15 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
             };
           });
         });
-      } catch {
+      } catch (error) {
+        if (!cancelled) setTokenFeedError(error instanceof Error ? error.message : "链上项目刷新失败");
         // Keep the last confirmed server state during transient API failures.
       } finally {
         requestInFlight = false;
       }
     };
 
-    const timer = window.setInterval(refreshTokens, 2_000);
+    const timer = window.setInterval(refreshTokens, activeChainKey === "robinhood-mainnet" ? 15_000 : 2_000);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") void refreshTokens();
     };
@@ -821,9 +945,15 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [activeChainKey]);
 
   useEffect(() => {
+    if (activeChainKey !== "bsc-testnet") {
+      setLpPositions([]);
+      setWithdrawalRecords([]);
+      setNodeApplications([]);
+      return;
+    }
     let cancelled = false;
     const loadAccountState = async () => {
       if (!currentWalletAddress || currentWalletAddress === DEMO_WALLET_ADDRESS) return;
@@ -881,10 +1011,12 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [currentWalletAddress, tokens]);
+  }, [activeChainKey, currentWalletAddress, tokens]);
 
   const value = useMemo<MvpContextType>(() => ({
     tokens,
+    isTokenFeedLoading,
+    tokenFeedError,
     walletAddress: currentWalletAddress,
     isConnected,
     walletBalances,
@@ -929,6 +1061,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         return demoSignature;
       }
 
+      await ensureActiveWalletChain();
       const accounts = await requestAccounts();
       const signature = await signLoginMessage(accounts[0]);
       try {
@@ -963,15 +1096,31 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     },
     getTokenBySymbol: (symbol) => {
       const normalized = (symbol || "ROCKET").toUpperCase();
-      return tokens.find((token) => token.symbol.toUpperCase() === normalized) || tokens[0];
+      return tokens.find((token) => token.contractAddress.toUpperCase() === normalized)
+        || tokens.find((token) => token.symbol.toUpperCase() === normalized);
+    },
+    loadTokenByAddress: async (address) => {
+      if (activeChainKey !== "robinhood-mainnet" || !/^0x[a-fA-F0-9]{40}$/.test(address)) return undefined;
+      const launch = await apiRequest<ServerPonsLaunch>(`/api/chains/robinhood-mainnet/pons/launches/${address}`);
+      const token = tokenFromPons(launch);
+      setTokens((current) => [
+        token,
+        ...current.filter((item) => item.contractAddress.toLowerCase() !== token.contractAddress.toLowerCase()),
+      ]);
+      return token;
     },
     createToken: (input) => {
+      if (!activeChain.supportsPlatformLaunch) {
+        throw new Error(`${activeChain.chainName} 使用 PONS 协议发射，不能调用 BSC Factory。`);
+      }
       if (!enableDemoFallback) {
         throw new Error("线上环境不允许本地创建代币，请等待链上交易和 indexer 同步。");
       }
       const symbol = input.symbol.toUpperCase();
       const launchTime = new Date(input.lpEndTime.getTime() + 10 * 60 * 1000);
       const token: Token = {
+        chainKey: "bsc-testnet",
+        protocol: "fair-meme-v3",
         logo: input.logo?.trim() || symbol.slice(0, 2),
         name: input.name,
         symbol,
@@ -1036,7 +1185,7 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         ...trade,
         id: `trade-${Date.now()}`,
         timestamp: new Date().toLocaleString(),
-        status: "simulated",
+        status: submittedTx?.status === "confirmed" ? "confirmed" : submittedTx ? "pending" : "simulated",
       };
       setTrades((current) => [record, ...current]);
       const chainTx = submittedTx || makeChainTransaction("trade", trade.tokenSymbol, JSON.stringify({
@@ -1044,20 +1193,20 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
         amount: trade.amount,
         currency: trade.currency,
       }), "demo");
+      setChainTransactions((current) => [chainTx, ...current.filter((item) => item.txHash !== chainTx.txHash)]);
       if (!submittedTx) {
-        setChainTransactions((current) => [chainTx, ...current]);
+        setIndexedEvents((current) => [makeIndexedEvent("TradeRecorded", {
+          txHash: chainTx.txHash,
+          tokenSymbol: trade.tokenSymbol,
+          walletAddress: currentWalletAddress,
+          payload: { side: trade.side, amount: trade.amount, currency: trade.currency },
+        }), ...current]);
+        setTokens((current) => current.map((token) => (
+          token.symbol === trade.tokenSymbol
+            ? { ...token, volume24h: "Updated", holders: token.holders + (trade.side === "buy" ? 1 : 0) }
+            : token
+        )));
       }
-      setIndexedEvents((current) => [makeIndexedEvent("TradeRecorded", {
-        txHash: chainTx.txHash,
-        tokenSymbol: trade.tokenSymbol,
-        walletAddress: currentWalletAddress,
-        payload: { side: trade.side, amount: trade.amount, currency: trade.currency },
-      }), ...current]);
-      setTokens((current) => current.map((token) => (
-        token.symbol === trade.tokenSymbol
-          ? { ...token, volume24h: "Updated", holders: token.holders + (trade.side === "buy" ? 1 : 0) }
-          : token
-      )));
       return record;
     },
     addLpPosition: (symbol, amount, currency, phase = "trading", submittedTx) => {
@@ -1232,7 +1381,10 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     },
     submitChainTransaction: async (action, tokenSymbol, payload) => {
       try {
-        if (hasInjectedWallet() && canUseRealChain()) {
+        if (activeChainKey !== "bsc-testnet") {
+          throw new Error("该操作是 BSC Factory 专属操作，Robinhood Chain 必须使用 PONS 合约入口。");
+        }
+        if (hasInjectedWallet() && canUseRealChain(activeChain)) {
           const tokenAddress = tokenSymbol ? tokens.find((token) => token.symbol === tokenSymbol)?.contractAddress : undefined;
           const data = buildFactoryCalldata(action, tokenAddress, payload);
           if (!data) {
@@ -1243,9 +1395,9 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
             setChainTransactions((current) => [tx, ...current]);
             return tx;
           }
-          await ensureWalletChain(bscTestnetConfig);
+          await ensureWalletChain(activeChain);
           const result = await sendValueTransaction({
-            to: bscTestnetConfig.factoryAddress!,
+            to: activeChain.factoryAddress!,
             valueHex: "0x0",
             data,
           });
@@ -1253,7 +1405,10 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
           setChainTransactions((current) => [tx, ...current]);
           return tx;
         }
-      } catch {
+      } catch (error) {
+        if (!enableDemoFallback) {
+          throw error instanceof Error ? error : new Error("链上交易提交失败");
+        }
         const tx = makeChainTransaction(action, tokenSymbol, payload, "wallet", undefined, "failed");
         setChainTransactions((current) => [tx, ...current]);
         return tx;
@@ -1357,6 +1512,11 @@ export const MvpProvider = ({ children }: { children: ReactNode }) => {
     walletBalances,
     walletSignatures,
     withdrawalRecords,
+    activeChain,
+    activeChainKey,
+    ensureActiveWalletChain,
+    isTokenFeedLoading,
+    tokenFeedError,
   ]);
 
   return <MvpContext.Provider value={value}>{children}</MvpContext.Provider>;

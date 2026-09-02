@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Wallet, Globe, Menu, Copy, ExternalLink, TrendingUp, TrendingDown, Gift, Award, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Wallet, Globe, Menu, Copy, ExternalLink, TrendingUp, TrendingDown, Gift, Award, Eye, EyeOff, ShieldCheck, Network, Check } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +30,8 @@ import goldenDogLogo from "@/assets/golden-dog-logo-1.png";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiRequest } from "@/lib/backendApi";
 import { enableDemoFallback } from "@/lib/runtimeFlags";
+import { useChain } from "@/contexts/ChainContext";
+import { ChainKey } from "@/lib/chainConfig";
 
 declare global {
   interface Window {
@@ -81,11 +83,12 @@ const Header = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+  const { activeChain, activeChainKey, chains, isWalletOnActiveChain, switchChain } = useChain();
 
   const shortWalletAddress = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
 
   useEffect(() => {
-    if (!isConnected || !walletAddress) {
+    if (!isConnected || !walletAddress || activeChain.key !== "bsc-testnet") {
       setCommissionRows([]);
       setCommissionTotals({});
       setCommissionRowsError("");
@@ -115,7 +118,7 @@ const Header = () => {
     return () => {
       cancelled = true;
     };
-  }, [isConnected, walletAddress]);
+  }, [activeChain.key, isConnected, walletAddress]);
 
   const ledgerData: {
     availableAmount: number;
@@ -224,13 +227,31 @@ const Header = () => {
 
   const navItems = [
     { key: "market", path: "/" },
-    { key: "charts", path: "/token/ROCKET" },
+    ...(activeChain.key === "bsc-testnet" ? [{ key: "charts", path: "/token/ROCKET" }] : []),
     { key: "createToken", path: null, isDialog: true },
-    { key: "node", path: "/nodes" },
-    { key: "goldenDogRanking", path: "/golden-dog-ranking" },
+    ...(activeChain.key === "bsc-testnet" ? [
+      { key: "node", path: "/nodes" },
+      { key: "goldenDogRanking", path: "/golden-dog-ranking" },
+    ] : []),
     { key: "api", path: "/api-docs" },
-    ...(isAdminSession ? [{ key: "admin", label: "审核", path: "/admin" }] : []),
+    ...(isAdminSession && activeChain.supportsPlatformAdmin ? [{ key: "admin", label: "审核", path: "/admin" }] : []),
   ];
+
+  const handleChainSwitch = async (key: ChainKey) => {
+    if (key === activeChainKey && isWalletOnActiveChain) return;
+    try {
+      await switchChain(key);
+      const nextChain = chains.find((chain) => chain.key === key);
+      toast({ title: "网络已切换", description: `${nextChain?.chainName || key} 数据和交易入口已启用。` });
+      if (location.pathname !== "/") navigate("/");
+    } catch (error) {
+      toast({
+        title: "网络切换失败",
+        description: error instanceof Error ? error.message : "请在钱包中确认网络切换。",
+        variant: "destructive",
+      });
+    }
+  };
 
   const isActiveRoute = (path: string) => {
     if (path.startsWith("/token/")) {
@@ -281,6 +302,38 @@ const Header = () => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={`gap-2 ${isWalletOnActiveChain ? "" : "border-destructive text-destructive"}`}
+                aria-label={`当前网络: ${activeChain.chainName}`}
+              >
+                <Network className="h-4 w-4" />
+                <span className="hidden xl:inline">{activeChain.shortName}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              {chains.map((chain) => (
+                <DropdownMenuItem
+                  key={chain.key}
+                  onClick={() => void handleChainSwitch(chain.key)}
+                  className="flex items-center gap-3 py-3"
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${chain.key === "bsc-testnet" ? "bg-amber-400" : "bg-emerald-400"}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{chain.chainName}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {chain.protocol === "pons-v2" ? "PONS V2 · Mainnet" : "Fair Meme V3 · Testnet"}
+                    </span>
+                  </span>
+                  {chain.key === activeChainKey && <Check className="h-4 w-4 text-primary" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Language Selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -388,16 +441,18 @@ const Header = () => {
             >
               创建代币
             </Button>
-            <Button
-              onClick={() => {
-                setIsCreateDialogOpen(false);
-                navigate("/my-tokens");
-              }}
-              variant="outline"
-              className="w-full h-16 text-lg"
-            >
-              我创建的代币
-            </Button>
+            {activeChain.key === "bsc-testnet" && (
+              <Button
+                onClick={() => {
+                  setIsCreateDialogOpen(false);
+                  navigate("/my-tokens");
+                }}
+                variant="outline"
+                className="w-full h-16 text-lg"
+              >
+                我创建的代币
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

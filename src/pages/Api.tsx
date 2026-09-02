@@ -254,6 +254,7 @@ const Api = () => {
   "action": "swapBuy",
   "tokenAddress": "0xToken...",
   "walletAddress": "0xWallet...",
+  "chainId": 4663,
   "status": "submitted",
   "payload": { "amount": "1000", "slippage": "0.5" }
 }`}
@@ -275,6 +276,28 @@ const Api = () => {
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge>GET</Badge>
+                          <code className="text-sm">/chains/robinhood-mainnet/pons/launches?limit=6</code>
+                          <Badge variant="outline">public read</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          读取 PONS V2 Factory 最新发射事件，并返回 Robinhood Chain 上的真实 token metadata、curve 储备、价格和毕业进度。
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge>GET</Badge>
+                          <code className="break-all text-sm">/chains/robinhood-mainnet/pons/launches/:tokenAddress</code>
+                          <Badge variant="outline">public read</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          按 token 合约地址读取指定 PONS V2 项目，供项目详情深链接和非最新项目刷新使用。
+                        </p>
                       </div>
 
                       <div>

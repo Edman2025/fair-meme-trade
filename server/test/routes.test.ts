@@ -106,6 +106,12 @@ vi.mock("../src/lib/chainExecutor", () => ({
   },
 }));
 
+vi.mock("../src/lib/chains", () => ({
+  getRobinhoodStatus: async () => ({ chainId: 4663, latestBlock: 123, ponsV2FactoryAvailable: true }),
+  getRobinhoodPonsLaunches: async () => ({ latestBlock: 123, rows: [], cached: false, failureCount: 0, errors: [] }),
+  getRobinhoodPonsLaunch: async (tokenAddress: string) => ({ tokenAddress, protocol: "PONS_V2", symbol: "PONS" }),
+}));
+
 vi.mock("../src/lib/holderAnalytics", () => ({
   getHolderAnalytics: async (params: unknown) => {
     mocks.holderCalls.push(params);
@@ -181,6 +187,57 @@ describe("server routes", () => {
     mocks.marketCalls.length = 0;
     const { resetRateLimiterForTests } = await import("../src/lib/rateLimiter");
     resetRateLimiterForTests();
+  });
+
+  it("lists BSC and Robinhood as separate supported chains", async () => {
+    const { buildApp } = await import("../src/app");
+    const app = await buildApp();
+    const response = await app.inject({ method: "GET", url: "/api/chains" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      defaultChain: "bsc-testnet",
+      chains: [
+        { key: "bsc-testnet", chainId: 97 },
+        { key: "robinhood-mainnet", chainId: 4663, protocol: "pons-v2" },
+      ],
+    });
+    await app.close();
+  });
+
+  it("loads a Robinhood PONS project by token address", async () => {
+    const { buildApp } = await import("../src/app");
+    const app = await buildApp();
+    const address = "0xECb5b66e62b2BC2B352C750Cb17eBd0b72CB399D";
+    const response = await app.inject({ method: "GET", url: `/api/chains/robinhood-mainnet/pons/launches/${address}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ tokenAddress: address, protocol: "PONS_V2" });
+    await app.close();
+  });
+
+  it("stores the originating chain for submitted transactions", async () => {
+    const { buildApp } = await import("../src/app");
+    const { issueToken } = await import("../src/lib/auth");
+    const app = await buildApp();
+    const token = issueToken("0xabc");
+    mocks.insertReturns.push([{ id: 1, txHash: "0xpons", chainId: 4663 }]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chain-transactions",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        txHash: "0xpons",
+        action: "ponsCurveSwap",
+        walletAddress: "0xabc",
+        chainId: 4663,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mocks.insertCalls.at(-1)).toMatchObject({ txHash: "0xpons", chainId: 4663 });
+    await app.close();
   });
 
   afterEach(() => {

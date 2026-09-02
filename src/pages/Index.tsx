@@ -10,10 +10,11 @@ import TokenCard from "@/components/TokenCard";
 import FilterPanel, { FilterState } from "@/components/FilterPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, FileText } from "lucide-react";
+import { Search, Plus, FileText, ExternalLink, Radio } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useMvp } from "@/contexts/MvpContext";
 import { useNavigate } from "react-router-dom";
+import { useChain } from "@/contexts/ChainContext";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("launched");
@@ -42,7 +43,8 @@ const Index = () => {
   });
   const [displayCount, setDisplayCount] = useState(6);
   const { t } = useLanguage();
-  const { tokens, lpPositions } = useMvp();
+  const { tokens, lpPositions, isTokenFeedLoading, tokenFeedError } = useMvp();
+  const { activeChain } = useChain();
   const navigate = useNavigate();
   // Filter and search logic
   const filteredTokens = useMemo(() => {
@@ -103,6 +105,28 @@ const Index = () => {
       <ScrollingBanner />
 
       <main className="container px-4 py-8">
+        <div className="mb-6 flex flex-col gap-3 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className={`h-3 w-3 rounded-full ${activeChain.key === "robinhood-mainnet" ? "bg-emerald-400" : "bg-amber-400"}`} />
+            <div>
+              <p className="font-semibold">{activeChain.chainName}</p>
+              <p className="text-sm text-muted-foreground">
+                {activeChain.protocol === "pons-v2" ? "PONS V2 链上项目 · 价格与储备直接读取 bonding curve" : "Fair Meme V3 · PancakeSwap V2"}
+              </p>
+            </div>
+          </div>
+          <a
+            href={activeChain.blockExplorerUrls[0]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <Radio className="h-4 w-4" />
+            Chain explorer
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+
         {/* Create Token Section */}
         <div className="mb-8">
           <div className="flex gap-6 items-stretch">
@@ -115,7 +139,7 @@ const Index = () => {
                   onClick={() => navigate("/create")}
                 >
                   <Plus className="mr-2 h-5 w-5" />
-                  {t("createToken")}
+                  {activeChain.protocol === "pons-v2" ? "PONS 发射入口" : t("createToken")}
                 </Button>
                 <div className="flex gap-2 text-sm text-muted-foreground items-center">
                   <FileText className="h-4 w-4" />
@@ -160,12 +184,14 @@ const Index = () => {
         </div>
 
         {/* Token Grid */}
-        {displayedTokens.length > 0 ? (
+        {isTokenFeedLoading ? (
+          <div className="py-16 text-center text-muted-foreground">正在读取 {activeChain.chainName} 真实链上项目...</div>
+        ) : displayedTokens.length > 0 ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {displayedTokens.map((token, index) => (
+              {displayedTokens.map((token) => (
                 <TokenCard 
-                  key={index} 
+                  key={`${token.chainKey}-${token.contractAddress}`}
                   {...token}
                 />
               ))}
@@ -187,7 +213,9 @@ const Index = () => {
           </>
         ) : (
           <div className="text-center py-16">
-            <p className="text-muted-foreground text-lg">No tokens found matching your criteria</p>
+            <p className="text-muted-foreground text-lg">
+              {tokenFeedError || `当前筛选条件下没有 ${activeChain.chainName} 项目`}
+            </p>
             <Button 
               variant="outline" 
               className="mt-4"

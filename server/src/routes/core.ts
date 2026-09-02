@@ -12,6 +12,7 @@ import { isApiKeyRequest, requireAdmin, requireApiKeyScope, requireUser, require
 import { env } from "../env";
 import { getHolderAnalytics } from "../lib/holderAnalytics";
 import { getMarketSeries, getOrderBook, getTokenCreationBlock, getTokenMetrics, presentTokenMetrics } from "../lib/marketData";
+import { getRobinhoodPonsLaunch, getRobinhoodPonsLaunches, getRobinhoodStatus } from "../lib/chains";
 
 const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), "server/uploads");
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -71,6 +72,40 @@ const readBnbUsdPrice = async () => {
 
 export const registerCoreRoutes = async (app: FastifyInstance) => {
   app.get("/api/health", async () => ({ ok: true, service: "fair-meme-trade-api" }));
+
+  app.get("/api/chains", async () => ({
+    defaultChain: "bsc-testnet",
+    chains: [
+      { key: "bsc-testnet", chainId: 97, name: "BSC Testnet", nativeSymbol: "tBNB", protocol: "fair-meme-v3" },
+      { key: "robinhood-mainnet", chainId: 4663, name: "Robinhood Chain", nativeSymbol: "ETH", protocol: "pons-v2" },
+    ],
+  }));
+
+  app.get("/api/chains/robinhood-mainnet/status", async (_request, reply) => {
+    try {
+      return await getRobinhoodStatus();
+    } catch (error) {
+      return sendRouteError(reply, error, "Robinhood Chain RPC unavailable");
+    }
+  });
+
+  app.get<{ Querystring: { limit?: string } }>("/api/chains/robinhood-mainnet/pons/launches", async (request, reply) => {
+    try {
+      return await getRobinhoodPonsLaunches(Number(request.query.limit || 18));
+    } catch (error) {
+      return sendRouteError(reply, error, "PONS launches unavailable");
+    }
+  });
+
+  app.get<{ Params: { tokenAddress: string } }>("/api/chains/robinhood-mainnet/pons/launches/:tokenAddress", async (request, reply) => {
+    try {
+      const launch = await getRobinhoodPonsLaunch(request.params.tokenAddress);
+      if (!launch) return reply.code(404).send({ error: "PONS launch not found" });
+      return launch;
+    } catch (error) {
+      return sendRouteError(reply, error, "PONS launch unavailable");
+    }
+  });
 
   app.get("/api/market/bnb-usd", async (request, reply) => {
     const now = Date.now();
@@ -234,7 +269,7 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
     }
   });
 
-  app.post<{ Body: { txHash: string; action: string; tokenAddress?: string; walletAddress?: string; status?: string; payload?: unknown } }>("/api/chain-transactions", async (request, reply) => {
+  app.post<{ Body: { txHash: string; action: string; tokenAddress?: string; walletAddress?: string; chainId?: number; status?: string; payload?: unknown } }>("/api/chain-transactions", async (request, reply) => {
     try {
       if (!request.body.walletAddress) throw new Error("walletAddress is required");
       await requireWalletWrite(request, request.body.walletAddress, "trade");
@@ -246,6 +281,7 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
       action: request.body.action,
       tokenAddress: request.body.tokenAddress,
       walletAddress: request.body.walletAddress?.toLowerCase(),
+      chainId: request.body.chainId || 97,
       status: request.body.status || "submitted",
       payload: request.body.payload,
     }).onConflictDoUpdate({
@@ -255,7 +291,12 @@ export const registerCoreRoutes = async (app: FastifyInstance) => {
     return tx;
   });
 
-  app.get("/api/chain-transactions", async () => db.select().from(chainTransactions).orderBy(desc(chainTransactions.createdAt)));
+  app.get<{ Querystring: { chainId?: string } }>("/api/chain-transactions", async (request) => {
+    const chainId = Number(request.query.chainId || 0);
+    return chainId > 0
+      ? db.select().from(chainTransactions).where(eq(chainTransactions.chainId, chainId)).orderBy(desc(chainTransactions.createdAt))
+      : db.select().from(chainTransactions).orderBy(desc(chainTransactions.createdAt));
+  });
   app.get("/api/indexed-events", async () => db.select().from(indexedEvents).orderBy(desc(indexedEvents.blockNumber), desc(indexedEvents.logIndex)));
   app.get("/api/indexer/status", async () => {
     const activeAddresses = new Set([env.factoryAddress, env.lpVaultAddress, env.commissionVaultAddress].filter(Boolean).map((address) => address.toLowerCase()));

@@ -83,6 +83,14 @@ export const onWalletAccountsChanged = (handler: (accounts: string[]) => void) =
   return () => provider.removeListener?.("accountsChanged", listener);
 };
 
+export const onWalletChainChanged = (handler: (chainId: string) => void) => {
+  const provider = getProvider();
+  if (!provider?.on) return () => undefined;
+  const listener = (chainId: unknown) => handler(String(chainId || ""));
+  provider.on("chainChanged", listener);
+  return () => provider.removeListener?.("chainChanged", listener);
+};
+
 export const getCurrentChainId = async () => {
   const provider = getProvider();
   if (!provider) {
