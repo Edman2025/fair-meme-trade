@@ -96,3 +96,7 @@ Robinhood launches are discovered from the PONS V2 Factory `TokenLaunched` event
 The public Robinhood RPC is suitable for local verification but is rate-limited. Production should set `ROBINHOOD_RPC_URL` and `VITE_ROBINHOOD_RPC_URL` to a dedicated Robinhood endpoint. Contract reads are coalesced through Multicall3, and direct token-address routes can resolve launches outside the latest feed window.
 
 For production scale-out, configure `REDIS_URL` so login nonce and unknown API-key rate limits are shared across API replicas. Without Redis the API falls back to in-process limits, which is acceptable for a single service instance.
+
+## License
+
+This project is open source under the [MIT License](LICENSE).
